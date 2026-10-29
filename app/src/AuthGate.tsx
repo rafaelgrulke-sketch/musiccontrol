@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { Eye, EyeOff, LockKeyhole, LogOut, UserPlus, Music2, X, ArrowRight, Headphones, ShieldCheck, ListMusic, AudioLines } from 'lucide-react'
 import { supabase } from './supabase'
+import AccountProfile from './components/AccountProfile'
 import './AuthGate.css'
 
 type Role = 'admin' | 'user'
@@ -119,11 +120,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   return <>
     {children}
-    <div className="mc-account-controls">
-      <span title={session.user.email || ''}>{session.user.email}</span>
-      {role === 'admin' && <button type="button" onClick={() => { setMessage(''); setShowAdmin(true) }}><UserPlus size={16}/> Cadastrar usuário</button>}
-      <button type="button" onClick={() => void supabase.auth.signOut()}><LogOut size={16}/> Sair</button>
-    </div>
+    <AccountProfile session={session} role={role} onAdmin={() => { setMessage(''); setShowAdmin(true) }} />
     {showAdmin && role === 'admin' && <div className="mc-admin-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setShowAdmin(false) }}>
       <form className="mc-auth-card mc-admin-modal" onSubmit={createUser}>
         <button className="mc-close" type="button" onClick={() => setShowAdmin(false)} aria-label="Fechar"><X size={19}/></button>

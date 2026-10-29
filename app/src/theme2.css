@@ -1,0 +1,30 @@
+/* MusicControl 2.0 — tokens compartilhados com autenticação */
+:root{--bg-canvas:#101216;--bg-sidebar:#151a19;--bg-surface:#1a211e;--bg-surface-hover:#242c27;--bg-surface-active:#303a2d;--bg-elevated:#222b25;--border-subtle:#303931;--border-muted:#3b463d;--border-strong:#556151;--text-primary:#f4f5f1;--text-secondary:#b8c0b9;--text-tertiary:#98a69a;--accent-base:#d9ff43;--accent-hover:#e6ff8a;--accent-active:#bce22d;--accent-contrast:#101216}
+body{background:#101216}::selection{background:#d9ff43;color:#101216}
+.mc2-hero{position:relative;isolation:isolate;overflow:hidden;min-height:430px;background:#171e1b}
+.mc2-hero .hero-copy{position:relative;z-index:2;pointer-events:none}.mc2-hero .hero-copy button{pointer-events:auto}
+.mc2-hero .hero-art{position:relative;z-index:1}
+.mc2-hero .hero-caption{color:#d9ff43;letter-spacing:.14em}
+.mc2-hero h1{font-weight:800;letter-spacing:-.035em}.mc2-hero h1 em{color:#d9ff43;font-style:normal}
+.mc2-scene{position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.68}
+.mc2-scene canvas{display:block;width:100%;height:100%}
+.mc2-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#171e1bef 0%,#171e1bc9 38%,#171e1b20 100%);z-index:0;pointer-events:none}
+@media(max-width:760px){.mc2-hero{min-height:350px}.mc2-scene{opacity:.32}.mc2-hero::after{background:linear-gradient(90deg,#171e1bf0,#171e1b75)}}
+@media(prefers-reduced-motion:reduce){.mc2-scene{display:none}}
+
+/* MusicControl 2.0.1 — editorial listening room / scroll nativo */
+html { scroll-behavior: auto; overflow-y: auto; }
+body, #root, .shell { overflow-y: visible; }
+.content { min-width: 0; overflow: visible; }
+.mc2-hero { min-height: clamp(410px, 49vw, 610px); border-radius: 4px; border-color: #333c32; background: #161b18; }
+.mc2-hero .hero-copy { max-width: 690px; }
+.mc2-hero h1 { font-size: clamp(3.1rem, 6.4vw, 7.2rem); line-height: .94; letter-spacing: -.07em; text-transform: uppercase; }
+.mc2-hero .hero-caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: .19em; }
+.mc2-hero p { max-width: 460px; font-size: 14px; line-height: 1.75; }
+.mc2-hero::after { background: linear-gradient(90deg,#161b18 0%,#161b18ed 34%,#161b1859 100%); }
+.topbar { padding-bottom: 20px; border-bottom: 1px solid var(--border-subtle); }
+.section-head { border-top: 1px solid var(--border-subtle); padding-top: 22px; }
+.section-head h2 { letter-spacing: -.045em; }
+.sidebar .brand { letter-spacing: -.055em; }
+@media (max-width: 760px) { .mc2-hero { min-height: 390px; } .mc2-hero h1 { font-size: clamp(2.7rem, 10vw, 4.5rem); } .mc2-hero::after { background: linear-gradient(90deg,#161b18f5,#161b18b5); } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .mc2-hero *, .vinyl { animation: none !important; } }

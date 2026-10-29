@@ -32,3 +32,19 @@
 @media(max-width:900px){.mc-auth-shell{grid-template-columns:1fr}.mc-auth-story{min-height:270px;padding:26px 30px}.mc-auth-story-body{margin:20px 0 0}.mc-auth-visual,.mc-auth-story-body>p,.mc-story-features,.mc-story-footer{display:none}.mc-auth-story h1{font-size:36px;margin:0}.mc-auth-panel{min-height:calc(100vh - 270px);padding:55px 24px 75px}.mc-auth-panel-footer{bottom:20px}}
 @media(max-width:520px){.mc-auth-story{min-height:210px;padding:25px 22px}.mc-auth-story h1{font-size:31px}.mc-auth-brand{font-size:19px}.mc-brand-symbol{width:37px;height:37px}.mc-auth-panel{min-height:calc(100vh - 210px);padding:38px 22px 65px;justify-content:flex-start}.mc-auth-card h2{font-size:28px}.mc-auth-card .mc-form-heading{margin-bottom:14px}.mc-account-controls{right:8px;bottom:8px;left:8px;justify-content:flex-end}.mc-account-controls span{display:none}.mc-account-controls button{font-size:11px}.mc-admin-modal{padding:25px}}
 @media(prefers-reduced-motion:reduce){.mc-auth-page *, .mc-admin-backdrop *{transition:none!important;animation:none!important}}
+
+/* MusicControl 2.0 — mesma identidade do player */
+.mc-auth-page,.mc-admin-backdrop{--mc-bg:#101216;--mc-panel:#1b2020;--mc-text:#f4f5f1;--mc-muted:#b8c0b9;--mc-accent:#d9ff43;background:#101216;color:#f4f5f1}
+.mc-auth-story{background:#161b19}.mc-auth-story:after{background:#d9ff4310}
+.mc-brand-symbol{background:#d9ff43;color:#101216}.mc-brand-accent,.mc-auth-story h1 em{color:#d9ff43}
+.mc-vinyl{background:repeating-radial-gradient(circle at center,#121716 0 3px,#252c27 4px 5px,#0e1411 6px 9px)}
+.mc-vinyl-center{background:#d9ff43;color:#101216}.mc-auth-wave span{background:#d9ff43}
+.mc-visual-caption{color:#d9ff43}.mc-auth-story-body>p,.mc-story-features span{color:#c9d0c8}.mc-story-footer{color:#aab4aa}
+.mc-auth-panel{background:#101216}.mc-auth-card{color:#f4f5f1}.mc-auth-card h2{color:#f4f5f1}.mc-auth-card p,.mc-auth-note{color:#b8c0b9}
+.mc-auth-card label{color:#e7ece6}.mc-auth-card input{background:#1d2420;border-color:#39463a;color:#fff}.mc-auth-card input::placeholder{color:#aab5aa}
+.mc-auth-card input:focus{border-color:#d9ff43;box-shadow:0 0 0 3px #d9ff4324}
+.mc-auth-card .mc-auth-primary{background:#d9ff43;color:#101216}.mc-auth-primary:hover:not(:disabled){background:#e6ff8a}
+.mc-auth-note{border-color:#343c35}.mc-auth-note svg{color:#d9ff43}.mc-auth-panel-footer{color:#b4beb3}
+.mc-account-controls{background:#19211c;border-color:#364339;color:#f2f5ef}.mc-account-controls button{background:#2a362c;border-color:#415044}
+.mc-admin-backdrop{background:#050705e8}.mc-admin-modal{background:#1a211c}.mc-auth-page button:focus-visible,.mc-admin-backdrop button:focus-visible,.mc-account-controls button:focus-visible{outline-color:#d9ff43}
+.mc-auth-loading-inner{color:#d9ff43}

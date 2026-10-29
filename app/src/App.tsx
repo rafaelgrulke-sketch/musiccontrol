@@ -9,6 +9,9 @@ import {
 } from 'lucide-react'
 import './App.css'
 import './redesign.css'
+import './theme2.css'
+import './editorial21.css'
+import CinematicScene from './components/CinematicScene'
 import { testarSupabase } from './testeSupabase'
 
 type Song = { id: string; title: string; artist: string; album?: string; url: string; coverUrl?: string }
@@ -595,7 +598,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <Disc3 size={16}/> MUSICCONTROL <span>1.6.1</span>
+          <Disc3 size={16}/> MUSICCONTROL <span>2.1</span>
         </div>
       </aside>
 
@@ -605,17 +608,18 @@ export default function App() {
             Coleção <span className="topbar-separator">/</span> 
             {tab === "home" ? "Início" : tab === "library" ? "Biblioteca" : tab === "artists" ? "Artistas" : "Playlists"}
           </span>
-          <span className="avatar">MC</span>
+          <div id="mc-profile-slot" />
         </div>
 
         {storageError && <p className="muted" role="alert">{storageError}</p>}
 
         {tab === 'home' && (
           <>
-            <section className="hero">
+            <section className="hero mc2-hero">
+              <CinematicScene />
               <div className="hero-copy">
-                <span className="hero-caption">SALA DE AUDIÇÃO</span>
-                <h1>Sua biblioteca.<br/><em>Livre e local.</em></h1>
+                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 2.1</span>
+                <h1>O SOM NO<br/><em>SEU RITMO.</em></h1>
                 <p>Reproduza álbuns e faixas sem intermediários, diretamente do armazenamento protegido do seu navegador.</p>
                 <div className="hero-actions">
                   <button className="primary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}>
