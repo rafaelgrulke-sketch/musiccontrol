@@ -26,11 +26,11 @@ export default function CinematicScene() {
       const camera = new THREE.PerspectiveCamera(40, 1, .1, 100)
       camera.position.z = 8
       const geometry = new THREE.TorusGeometry(2.1, .11, 12, 110)
-      const material = new THREE.MeshBasicMaterial({ color: 0xd9ff43, transparent: true, opacity: .72 })
+      const material = new THREE.MeshBasicMaterial({ color: 0xff168c, transparent: true, opacity: .72 })
       const ring = new THREE.Mesh(geometry, material)
       ring.rotation.x = .75
       scene.add(ring)
-      const inner = new THREE.Mesh(new THREE.TorusGeometry(1.45, .035, 8, 90), new THREE.MeshBasicMaterial({ color: 0x8cbf70, transparent: true, opacity: .55 }))
+      const inner = new THREE.Mesh(new THREE.TorusGeometry(1.45, .035, 8, 90), new THREE.MeshBasicMaterial({ color: 0xa62b70, transparent: true, opacity: .55 }))
       inner.rotation.x = .75
       scene.add(inner)
       const resize = () => {
@@ -50,7 +50,7 @@ export default function CinematicScene() {
         pointerY = ((event.clientY - rect.top) / rect.height - .5) * .25
       }
       const hero = element.closest<HTMLElement>('.mc2-hero')
-      hero?.addEventListener('pointermove', move)
+      hero?.addEventListener('pointermove', move as EventListener)
       const render = () => {
         if (!document.hidden) {
           ring.rotation.z += .0018
@@ -67,7 +67,7 @@ export default function CinematicScene() {
       }) : null
       // O player usa scroll nativo; Lenis em wrapper incorreto bloqueava a rolagem.
       cleanup = () => {
-        cancelAnimationFrame(raf); observer.disconnect(); hero?.removeEventListener('pointermove', move)
+        cancelAnimationFrame(raf); observer.disconnect(); hero?.removeEventListener('pointermove', move as EventListener)
         animation?.scrollTrigger?.kill(); animation?.kill(); 
         geometry.dispose(); material.dispose(); inner.geometry.dispose(); (inner.material as InstanceType<typeof THREE.MeshBasicMaterial>).dispose()
         renderer.dispose(); canvas.remove()

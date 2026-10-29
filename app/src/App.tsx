@@ -11,6 +11,7 @@ import './App.css'
 import './redesign.css'
 import './theme2.css'
 import './editorial21.css'
+import './musiccontrol30.css'
 import CinematicScene from './components/CinematicScene'
 import { testarSupabase } from './testeSupabase'
 
@@ -598,7 +599,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <Disc3 size={16}/> MUSICCONTROL <span>2.1</span>
+          <Disc3 size={16}/> MUSICCONTROL <span>3.0</span>
         </div>
       </aside>
 
@@ -618,7 +619,7 @@ export default function App() {
             <section className="hero mc2-hero">
               <CinematicScene />
               <div className="hero-copy">
-                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 2.1</span>
+                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 3.0</span>
                 <h1>O SOM NO<br/><em>SEU RITMO.</em></h1>
                 <p>Reproduza álbuns e faixas sem intermediários, diretamente do armazenamento protegido do seu navegador.</p>
                 <div className="hero-actions">
@@ -646,6 +647,23 @@ export default function App() {
               <i/>
               <span><strong>{playlists.length}</strong> {playlists.length === 1 ? 'playlist' : 'playlists'}</span>
             </div>
+
+            {songs.length > 0 && (
+              <section className="mc3-quick" aria-label="Acesso rápido às suas músicas">
+                <div className="section-head mc3-section-head">
+                  <div><span className="mc3-kicker">SUA FREQUÊNCIA</span><h2>Entre no seu som<span className="mc3-dot">.</span></h2></div>
+                  <button className="text-button" onClick={() => setTab('library')}>Explorar biblioteca →</button>
+                </div>
+                <div className="mc3-quick-grid">
+                  {songs.slice(0, 4).map((song, i) => (
+                    <button key={song.id} className="mc3-quick-card" onClick={() => chooseSong(song.id)} aria-label={`Reproduzir ${song.title}`}>
+                      <div className="mc3-quick-cover">{cover(song)}<span className="mc3-quick-play"><Play size={20} fill="currentColor"/></span></div>
+                      <div className="mc3-quick-meta"><span className="mc3-quick-number">0{i + 1} / NA SUA COLEÇÃO</span><strong>{song.title}</strong><small>{song.artist}</small></div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {artists.length > 0 && (
               <>
