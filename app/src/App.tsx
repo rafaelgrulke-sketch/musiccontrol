@@ -244,6 +244,73 @@ export default function App() {
     Object.values(photosRef.current).forEach(url => URL.revokeObjectURL(url))
   }, [])
 
+  // Controles nativos de mídia: tela bloqueada, notificações e teclas multimídia.
+  // Os callbacks ficam em refs para não registrar handlers obsoletos.
+  const mediaActions = useRef({ next: () => {}, previous: () => {} })
+  mediaActions.current.next = () => move(1)
+  mediaActions.current.previous = () => move(-1)
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const session = navigator.mediaSession
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play', () => setPlaying(true)],
+      ['pause', () => setPlaying(false)],
+      ['stop', () => { setPlaying(false); if (audio.current) audio.current.currentTime = 0 }],
+      ['nexttrack', () => mediaActions.current.next()],
+      ['previoustrack', () => {
+        if (audio.current && audio.current.currentTime > 3) audio.current.currentTime = 0
+        else mediaActions.current.previous()
+      }],
+      ['seekto', details => {
+        if (!audio.current || details.seekTime === undefined) return
+        const length = audio.current.duration
+        audio.current.currentTime = Math.max(0, Math.min(details.seekTime, Number.isFinite(length) ? length : details.seekTime))
+      }],
+      ['seekbackward', details => {
+        if (audio.current) audio.current.currentTime = Math.max(0, audio.current.currentTime - (details.seekOffset || 10))
+      }],
+      ['seekforward', details => {
+        if (audio.current) audio.current.currentTime = Math.min(audio.current.duration || Infinity, audio.current.currentTime + (details.seekOffset || 10))
+      }],
+    ]
+    for (const [action, handler] of handlers) {
+      try { session.setActionHandler(action, handler) } catch { /* ação não suportada neste navegador */ }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try { session.setActionHandler(action, null) } catch { /* navegador sem suporte */ }
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const song = songsById
+    navigator.mediaSession.metadata = song ? new MediaMetadata({
+      title: song.title,
+      artist: song.artist,
+      album: song.album || 'MusicControl',
+      artwork: song.coverUrl ? [{ src: song.coverUrl }] : [],
+    }) : null
+  }, [songsById?.id, songsById?.title, songsById?.artist, songsById?.album, songsById?.coverUrl])
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing && currentId ? 'playing' : 'paused'
+  }, [playing, currentId])
+
+  function updateMediaPosition(element: HTMLAudioElement) {
+    if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return
+    if (!Number.isFinite(element.duration) || element.duration <= 0) return
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: element.duration,
+        playbackRate: element.playbackRate,
+        position: Math.max(0, Math.min(element.currentTime, element.duration)),
+      })
+    } catch { /* posição indisponível */ }
+  }
+
   useEffect(() => { if (audio.current) audio.current.volume = volume }, [volume])
   useEffect(() => {
     const el = audio.current
@@ -1026,10 +1093,11 @@ export default function App() {
       <audio 
         ref={audio} 
         src={songsById?.url} 
-        preload="metadata" 
-        onLoadedMetadata={e => { setDuration(e.currentTarget.duration || 0); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} 
+        preload="auto"
+        playsInline 
+        onLoadedMetadata={e => { setDuration(e.currentTarget.duration || 0); updateMediaPosition(e.currentTarget); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} 
         onCanPlay={e => { if (playing && e.currentTarget.paused) e.currentTarget.play().catch(() => setPlaying(false)) }} 
-        onTimeUpdate={e => setProgress(e.currentTarget.currentTime)} 
+        onTimeUpdate={e => { setProgress(e.currentTarget.currentTime); updateMediaPosition(e.currentTarget) }} 
         onEnded={ended} 
         onError={() => { if (songsById) { setPlaying(false); setNotice({ text: 'Falha ao decodificar arquivo de áudio.', error: true }) } }}
       />
