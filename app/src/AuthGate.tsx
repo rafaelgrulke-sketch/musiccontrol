@@ -22,17 +22,37 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
+  // Não desmontar o player durante TOKEN_REFRESHED, USER_UPDATED ou
+  // revalidações da sessão. Só limpar a interface no logout real.
   useEffect(() => {
     let active = true
     let revision = 0
+    let currentUserId: string | null = null
+
     async function loadSession(next: Session | null) {
       const current = ++revision
       if (!active) return
+      if (!next) {
+        currentUserId = null
+        setSession(null)
+        setRole(null)
+        setLoading(false)
+        setMessage('')
+        return
+      }
+
+      // Mesmo usuário: atualizar apenas o token, mantendo o App montado.
+      // O áudio não deve ser reiniciado por refresh automático do Supabase.
+      if (currentUserId === next.user.id) {
+        setSession(next)
+        return
+      }
+
+      currentUserId = next.user.id
       setSession(next)
       setRole(null)
       setLoading(true)
       setMessage('')
-      if (!next) { setLoading(false); return }
       const { data, error } = await supabase.from('profiles').select('role').eq('id', next.user.id).single()
       if (!active || current !== revision) return
       if (error || (data?.role !== 'admin' && data?.role !== 'user')) {
@@ -42,8 +62,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       }
       setLoading(false)
     }
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      // Deferir consulta ao banco para fora do callback de autenticação.
+      // Consultas ao banco devem ocorrer fora do callback do Supabase.
       setTimeout(() => { if (active) void loadSession(next) }, 0)
     })
     void supabase.auth.getSession().then(({ data, error }) => {

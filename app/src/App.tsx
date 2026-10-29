@@ -105,6 +105,22 @@ function persistPlaylists(playlists: Playlist[]): Promise<void> {
   return playlistQueue
 }
 
+type PlaybackSnapshot = { songId: string | null; position: number; volume: number; wasPlaying: boolean }
+const PLAYBACK_KEY = 'musiccontrol:playback:v1'
+function loadPlayback(): PlaybackSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(PLAYBACK_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw) as Partial<PlaybackSnapshot>
+    return {
+      songId: typeof data.songId === 'string' ? data.songId : null,
+      position: typeof data.position === 'number' && Number.isFinite(data.position) ? Math.max(0, data.position) : 0,
+      volume: typeof data.volume === 'number' && Number.isFinite(data.volume) ? Math.max(0, Math.min(1, data.volume)) : 0.8,
+      wasPlaying: data.wasPlaying === true,
+    }
+  } catch { return null }
+}
+
 const artistKey = (name: string) => name.trim().toLocaleLowerCase('pt-BR')
 const time = (value: number) => Number.isFinite(value) ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}` : '0:00'
 
@@ -118,7 +134,7 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [volume, setVolume] = useState(0.8)
+  const [volume, setVolume] = useState(() => loadPlayback()?.volume ?? 0.8)
   const [shuffle, setShuffle] = useState(false)
   const [repeat, setRepeat] = useState(false)
   const [ready, setReady] = useState(false)
@@ -142,6 +158,9 @@ export default function App() {
   const dialogInput = useRef<HTMLInputElement>(null)
 
   const audio = useRef<HTMLAudioElement>(null)
+  const playbackRestore = useRef(loadPlayback())
+  const pendingSeek = useRef<number | null>(playbackRestore.current?.position ?? null)
+  const lastSnapshotWrite = useRef(0)
   const filesInput = useRef<HTMLInputElement>(null)
   const songsRef = useRef<Song[]>([])
   const songsById = songs.find(s => s.id === currentId)
@@ -192,7 +211,17 @@ export default function App() {
         setArtistPhotos(restoredPhotos)
         setSongs(restored)
         setPlaylists(Array.isArray(savedPlaylists) ? savedPlaylists : [])
-        setCurrentId(null)
+        const snapshot = playbackRestore.current
+        if (snapshot?.songId && restored.some(s => s.id === snapshot.songId)) {
+          setCurrentId(snapshot.songId)
+          // Após recarregamento, o navegador pode exigir um novo clique para tocar.
+          // Recuperamos a faixa e o tempo sem tentar contornar a política de autoplay.
+          setPlaying(false)
+          setProgress(snapshot.position)
+        } else {
+          pendingSeek.current = null
+          setCurrentId(null)
+        }
       } catch (error) {
         if (!cancelled) {
           console.error('Erro ao abrir biblioteca local:', error)
@@ -309,6 +338,38 @@ export default function App() {
         position: Math.max(0, Math.min(element.currentTime, element.duration)),
       })
     } catch { /* posição indisponível */ }
+  }
+
+  // Preserva a sessão em recarregamentos/HMR e em abas descartadas pelo navegador.
+  // Não adiciona listeners de visibilitychange que pausariam o áudio ao trocar de aba.
+  const playbackStateRef = useRef({ currentId, playing, volume })
+  playbackStateRef.current = { currentId, playing, volume }
+  function savePlaybackSnapshot(force = false) {
+    const now = Date.now()
+    if (!force && now - lastSnapshotWrite.current < 1500) return
+    lastSnapshotWrite.current = now
+    const state = playbackStateRef.current
+    try {
+      sessionStorage.setItem(PLAYBACK_KEY, JSON.stringify({
+        songId: state.currentId,
+        position: audio.current?.currentTime ?? 0,
+        volume: state.volume,
+        wasPlaying: state.playing,
+      } satisfies PlaybackSnapshot))
+    } catch { /* armazenamento de sessão indisponível */ }
+  }
+  useEffect(() => { savePlaybackSnapshot(true) }, [currentId, playing, volume])
+  useEffect(() => {
+    const save = () => savePlaybackSnapshot(true)
+    window.addEventListener('pagehide', save)
+    return () => { save(); window.removeEventListener('pagehide', save) }
+  }, [])
+  function restoreAudioPosition(element: HTMLAudioElement) {
+    const target = pendingSeek.current
+    if (target === null || !Number.isFinite(element.duration) || element.duration <= 0) return
+    element.currentTime = Math.min(target, Math.max(0, element.duration - 0.1))
+    pendingSeek.current = null
+    setProgress(element.currentTime)
   }
 
   useEffect(() => { if (audio.current) audio.current.volume = volume }, [volume])
@@ -549,7 +610,7 @@ export default function App() {
 
   function chooseSong(id: string) {
     if (id === currentId) { setPlaying(p => !p); return }
-    setProgress(0); setDuration(0); setCurrentId(id); setPlaying(true)
+    pendingSeek.current = null; setProgress(0); setDuration(0); setCurrentId(id); setPlaying(true)
   }
 
   function move(direction: number) {
@@ -558,7 +619,7 @@ export default function App() {
     const next = shuffle && songs.length > 1 
       ? (i + 1 + Math.floor(Math.random() * (songs.length - 1))) % songs.length 
       : (i + direction + songs.length) % songs.length
-    setProgress(0); setDuration(0); setCurrentId(songs[next].id); setPlaying(true)
+    pendingSeek.current = null; setProgress(0); setDuration(0); setCurrentId(songs[next].id); setPlaying(true)
   }
 
   function ended() {
@@ -1095,9 +1156,9 @@ export default function App() {
         src={songsById?.url} 
         preload="auto"
         playsInline 
-        onLoadedMetadata={e => { setDuration(e.currentTarget.duration || 0); updateMediaPosition(e.currentTarget); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} 
+        onLoadedMetadata={e => { restoreAudioPosition(e.currentTarget); setDuration(e.currentTarget.duration || 0); updateMediaPosition(e.currentTarget); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} 
         onCanPlay={e => { if (playing && e.currentTarget.paused) e.currentTarget.play().catch(() => setPlaying(false)) }} 
-        onTimeUpdate={e => { setProgress(e.currentTarget.currentTime); updateMediaPosition(e.currentTarget) }} 
+        onTimeUpdate={e => { setProgress(e.currentTarget.currentTime); updateMediaPosition(e.currentTarget); savePlaybackSnapshot() }} 
         onEnded={ended} 
         onError={() => { if (songsById) { setPlaying(false); setNotice({ text: 'Falha ao decodificar arquivo de áudio.', error: true }) } }}
       />
