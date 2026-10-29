@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { parseBlob } from 'music-metadata'
-import { Home, Library, ListMusic, Upload, Search, Play, Pause, SkipBack, SkipForward, Volume2, Music2, Plus, Trash2, Disc3, Clock3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, RefreshCw, X, CheckCircle2, AlertCircle, Images } from 'lucide-react'
+import { 
+  Home, Library, ListMusic, Upload, Search, Play, Pause, 
+  SkipBack, SkipForward, Volume2, Music2, Plus, Trash2, 
+  Disc3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, 
+  RefreshCw, X, CheckCircle2, AlertCircle, Images 
+} from 'lucide-react'
 import './App.css'
+import './redesign.css'
+import { testarSupabase } from './testeSupabase'
 
 type Song = { id: string; title: string; artist: string; album?: string; url: string; coverUrl?: string }
 type Playlist = { id: string; name: string; songIds: string[] }
@@ -16,8 +23,6 @@ type Dialog =
   | { kind: 'deleteSong'; songId: string }
 type Notice = { text: string; error?: boolean }
 
-
-// Os arquivos de áudio ficam no IndexedDB deste navegador (não na nuvem).
 type StoredSong = { id: string; title: string; artist: string; album?: string; cover?: Blob; file: Blob; importedAt: number }
 const DB_NAME = 'musiccontrol-library'
 const DB_VERSION = 1
@@ -27,7 +32,7 @@ function openDatabase(): Promise<IDBDatabase> {
   if (!dbPromise) {
     dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
       if (!('indexedDB' in window)) {
-        reject(new Error('Este navegador não oferece IndexedDB.'))
+        reject(new Error('Este navegador não oferece suporte a IndexedDB.'))
         return
       }
       const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -38,7 +43,7 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error ?? new Error('Não foi possível abrir a biblioteca.'))
-      request.onblocked = () => reject(new Error('Feche outras abas do MusicControl e tente novamente.'))
+      request.onblocked = () => reject(new Error('Feche outras abas do MusicControl e recarregue a página.'))
     }).catch(error => {
       dbPromise = null
       throw error
@@ -53,7 +58,7 @@ async function getRecords<T>(storeName: string): Promise<T[]> {
     const tx = db.transaction(storeName, 'readonly')
     const request = tx.objectStore(storeName).getAll()
     request.onsuccess = () => resolve(request.result as T[])
-    request.onerror = () => reject(request.error ?? new Error('Erro na leitura dos dados.'))
+    request.onerror = () => reject(tx.error ?? new Error('Erro na leitura dos dados.'))
   })
 }
 
@@ -82,7 +87,7 @@ async function deleteRecord(storeName: string, id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, 'readwrite')
     tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error ?? new Error('Erro ao excluir a música.'))
+    tx.onerror = () => reject(tx.error ?? new Error('Erro ao excluir registro.'))
     tx.onabort = () => reject(tx.error ?? new Error('Exclusão cancelada.'))
     tx.objectStore(storeName).delete(id)
   })
@@ -90,7 +95,6 @@ async function deleteRecord(storeName: string, id: string): Promise<void> {
 
 let playlistQueue: Promise<void> = Promise.resolve()
 function persistPlaylists(playlists: Playlist[]): Promise<void> {
-  // Serializa gravações para alterações rápidas não restaurarem uma versão antiga.
   playlistQueue = playlistQueue.catch(() => {}).then(() =>
     putRecord('settings', { key: 'playlists', value: playlists })
   )
@@ -98,7 +102,6 @@ function persistPlaylists(playlists: Playlist[]): Promise<void> {
 }
 
 const artistKey = (name: string) => name.trim().toLocaleLowerCase('pt-BR')
-
 const time = (value: number) => Number.isFinite(value) ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}` : '0:00'
 
 export default function App() {
@@ -149,6 +152,11 @@ export default function App() {
     return acc
   }, {})).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 
+  // Teste de comunicação com o servidor Supabase
+  useEffect(() => {
+    void testarSupabase()
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     async function restoreLibrary() {
@@ -180,11 +188,11 @@ export default function App() {
         setArtistPhotos(restoredPhotos)
         setSongs(restored)
         setPlaylists(Array.isArray(savedPlaylists) ? savedPlaylists : [])
-        setCurrentId(restored[0]?.id ?? null)
+        setCurrentId(null)
       } catch (error) {
         if (!cancelled) {
           console.error('Erro ao abrir biblioteca local:', error)
-          setStorageError('Não foi possível abrir o armazenamento local. Verifique as permissões e o espaço disponível no navegador.')
+          setStorageError('Não foi possível abrir o armazenamento local do navegador.')
         }
       } finally {
         if (!cancelled) setReady(true)
@@ -198,13 +206,13 @@ export default function App() {
     if (!ready || storageError) return
     void persistPlaylists(playlists).catch(error => {
       console.error('Erro ao salvar playlists:', error)
-      setStorageError('Não foi possível salvar as playlists. Verifique o espaço do navegador.')
+      setStorageError('Falha ao persistir playlists no navegador.')
     })
   }, [playlists, ready, storageError])
 
   useEffect(() => {
     if (!notice) return
-    const timeout = window.setTimeout(() => setNotice(null), 4500)
+    const timeout = window.setTimeout(() => setNotice(null), 4000)
     return () => window.clearTimeout(timeout)
   }, [notice])
 
@@ -231,6 +239,7 @@ export default function App() {
     songsRef.current.forEach(s => { URL.revokeObjectURL(s.url); if (s.coverUrl) URL.revokeObjectURL(s.coverUrl) })
     Object.values(photosRef.current).forEach(url => URL.revokeObjectURL(url))
   }, [])
+
   useEffect(() => { if (audio.current) audio.current.volume = volume }, [volume])
   useEffect(() => {
     const el = audio.current
@@ -245,7 +254,6 @@ export default function App() {
     try {
       const metadata = await parseBlob(file)
       const picture = metadata.common.picture?.[0]
-      // Impede salvar imagens gigantes embutidas no áudio.
       const cover = picture && picture.data.byteLength <= 10 * 1024 * 1024
         ? new Blob([new Uint8Array(picture.data)], { type: picture.format || 'image/jpeg' })
         : undefined
@@ -255,8 +263,7 @@ export default function App() {
         album: metadata.common.album?.trim() || undefined,
         cover
       }
-    } catch (error) {
-      console.info('Este áudio não possui metadados legíveis:', filename, error)
+    } catch {
       return fallback
     }
   }
@@ -264,14 +271,14 @@ export default function App() {
   async function importSongs(files: FileList | null) {
     if (!files?.length || importing) return
     if (!ready || storageError) {
-      setNotice({ text: 'A biblioteca local ainda não está pronta. Recarregue a página.', error: true })
+      setNotice({ text: 'A biblioteca local não está acessível no momento.', error: true })
       return
     }
     const accepted = Array.from(files).filter(f =>
       f.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(f.name)
     )
     if (!accepted.length) {
-      setNotice({ text: 'Selecione arquivos de áudio válidos, como MP3.', error: true })
+      setNotice({ text: 'Formato inválido. Selecione arquivos de áudio suportados.', error: true })
       return
     }
     setImporting(true)
@@ -282,24 +289,19 @@ export default function App() {
         const id = crypto.randomUUID()
         const tags = await readTags(file, file.name)
         try {
-          // Salva o arquivo real, não a URL temporária blob:.
-          await putRecord('songs', {
-            id, ...tags, file, importedAt: Date.now()
-          } satisfies StoredSong)
+          await putRecord('songs', { id, ...tags, file, importedAt: Date.now() } satisfies StoredSong)
           added.push({ id, title: tags.title, artist: tags.artist, album: tags.album, url: URL.createObjectURL(file), coverUrl: tags.cover ? URL.createObjectURL(tags.cover) : undefined })
-        } catch (error) {
+        } catch {
           failures++
-          console.error(`Não foi possível salvar ${file.name}:`, error)
         }
       }
       if (added.length) {
-        setNotice({ text: `${added.length} música(s) adicionada(s) à sua biblioteca.` })
+        setNotice({ text: `${added.length} faixa(s) importada(s) com sucesso.` })
         setSongs(prev => [...prev, ...added])
-        if (!currentId) setCurrentId(added[0].id)
         setTab('library')
       }
       if (failures) {
-        setNotice({ text: `${added.length} música(s) salva(s); ${failures} não puderam ser salvas. Verifique o espaço do navegador.`, error: true })
+        setNotice({ text: `${failures} faixa(s) não puderam ser armazenadas. Verifique o espaço livre.`, error: true })
       }
     } finally {
       setImporting(false)
@@ -320,12 +322,11 @@ export default function App() {
       window.setTimeout(() => {
         URL.revokeObjectURL(target.url)
         if (target.coverUrl) URL.revokeObjectURL(target.coverUrl)
-      }, 1000)
+      }, 500)
       setDialog(null)
-      setNotice({ text: `“${target.title}” foi removida da biblioteca.` })
-    } catch (error) {
-      console.error('Erro ao excluir música:', error)
-      setNotice({ text: 'Não foi possível excluir a música do armazenamento local.', error: true })
+      setNotice({ text: `“${target.title}” excluída.` })
+    } catch {
+      setNotice({ text: 'Falha ao remover arquivo do IndexedDB.', error: true })
     } finally { setSavingDialog(false) }
   }
 
@@ -336,7 +337,6 @@ export default function App() {
     try {
       const stored = await getRecords<StoredSong>('songs')
       for (const old of stored) {
-        // Mantém as edições manuais: só preenche dados ausentes ou desconhecidos.
         if (old.cover && old.artist !== 'Artista desconhecido' && old.album) continue
         const tags = await readTags(old.file, old.title)
         const revised: StoredSong = {
@@ -351,15 +351,14 @@ export default function App() {
         setSongs(prev => prev.map(s => {
           if (s.id !== old.id) return s
           const newCoverUrl = revised.cover && revised.cover !== old.cover ? URL.createObjectURL(revised.cover) : s.coverUrl
-          if (newCoverUrl !== s.coverUrl && s.coverUrl) window.setTimeout(() => URL.revokeObjectURL(s.coverUrl!), 1000)
+          if (newCoverUrl !== s.coverUrl && s.coverUrl) window.setTimeout(() => URL.revokeObjectURL(s.coverUrl!), 500)
           return { ...s, artist: revised.artist, album: revised.album, coverUrl: newCoverUrl }
         }))
         updated++
       }
-      setNotice({ text: updated ? `${updated} música(s) atualizada(s) com metadados e capas.` : 'Nenhuma informação nova encontrada nos arquivos.' })
-    } catch (error) {
-      console.error('Erro ao revisar metadados:', error)
-      setNotice({ text: 'Não foi possível concluir a leitura das capas. Tente novamente.', error: true })
+      setNotice({ text: updated ? `${updated} música(s) atualizadas com metadados.` : 'Nenhum novo metadado localizado.' })
+    } catch {
+      setNotice({ text: 'Erro ao resgatar metadados.', error: true })
     } finally {
       setScanning(false)
     }
@@ -378,10 +377,10 @@ export default function App() {
   function chooseNewCover(file?: File) {
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      setNotice({ text: 'Selecione uma imagem JPG, PNG ou WebP.', error: true }); return
+      setNotice({ text: 'Selecione uma imagem válida.', error: true }); return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setNotice({ text: 'A capa deve ter no máximo 5 MB.', error: true }); return
+      setNotice({ text: 'Tamanho máximo da imagem: 5 MB.', error: true }); return
     }
     setCoverFile(file)
     setRemoveCover(false)
@@ -394,7 +393,7 @@ export default function App() {
     setSavingDialog(true)
     try {
       const stored = await getRecord<StoredSong>('songs', dialogSong.id)
-      if (!stored) throw new Error('Música não encontrada na biblioteca.')
+      if (!stored) throw new Error('Não localizado.')
       const newCover = removeCover ? undefined : (coverFile ?? stored.cover)
       const edited = {
         ...stored,
@@ -409,12 +408,11 @@ export default function App() {
       setSongs(prev => prev.map(song => song.id === dialogSong.id
         ? { ...song, title: edited.title, artist: edited.artist, album: edited.album, coverUrl: newUrl }
         : song))
-      if (oldUrl && oldUrl !== newUrl) window.setTimeout(() => URL.revokeObjectURL(oldUrl), 1000)
+      if (oldUrl && oldUrl !== newUrl) window.setTimeout(() => URL.revokeObjectURL(oldUrl), 500)
       setDialog(null)
-      setNotice({ text: 'Informações e capa da música atualizadas!' })
-    } catch (error) {
-      console.error('Erro ao salvar música:', error)
-      setNotice({ text: 'Não foi possível salvar as alterações da música.', error: true })
+      setNotice({ text: 'Faixa atualizada.' })
+    } catch {
+      setNotice({ text: 'Falha ao salvar edições.', error: true })
     } finally { setSavingDialog(false) }
   }
 
@@ -444,10 +442,9 @@ export default function App() {
       }
       setSongs(prev => prev.map(song => artistKey(song.artist) === oldKey ? { ...song, artist: newName } : song))
       setDialog(null)
-      setNotice({ text: `Nome atualizado em ${targets.length} música(s).` })
-    } catch (error) {
-      console.error('Erro ao renomear artista:', error)
-      setNotice({ text: 'Não foi possível renomear todas as músicas do artista.', error: true })
+      setNotice({ text: `Artista atualizado em ${targets.length} faixa(s).` })
+    } catch {
+      setNotice({ text: 'Não foi possível atualizar o nome em todas as músicas.', error: true })
     } finally { setSavingDialog(false) }
   }
 
@@ -459,41 +456,45 @@ export default function App() {
   async function saveArtistPhoto(file: File | undefined) {
     const key = artistKey(photoArtist.current)
     if (!file || !key) return
-    if (!file.type.startsWith('image/')) { setNotice({ text: 'Selecione uma imagem válida.', error: true }); return }
-    if (file.size > 5 * 1024 * 1024) { setNotice({ text: 'A imagem deve ter até 5 MB.', error: true }); return }
+    if (!file.type.startsWith('image/')) { setNotice({ text: 'Formato de imagem inválido.', error: true }); return }
+    if (file.size > 5 * 1024 * 1024) { setNotice({ text: 'O arquivo não pode exceder 5 MB.', error: true }); return }
     try {
       await putRecord('settings', { key: `artist-photo:${key}`, value: file })
       const url = URL.createObjectURL(file)
       const oldUrl = photosRef.current[key]
       setArtistPhotos(prev => ({ ...prev, [key]: url }))
-      if (oldUrl) window.setTimeout(() => URL.revokeObjectURL(oldUrl), 1000)
-      setNotice({ text: 'Foto do artista salva com sucesso.' })
-    } catch (error) {
-      console.error('Erro ao salvar foto do artista:', error)
-      setNotice({ text: 'Não foi possível salvar a foto no navegador.', error: true })
+      if (oldUrl) window.setTimeout(() => URL.revokeObjectURL(oldUrl), 500)
+      setNotice({ text: 'Foto sincronizada com sucesso.' })
+    } catch {
+      setNotice({ text: 'Erro ao persistir imagem.', error: true })
     }
   }
 
-  function cover(song: Song, size: 'small' | 'large' = 'small') {
+  function cover(song: Song) {
     return song.coverUrl
-      ? <img className={`cover-photo ${size}`} src={song.coverUrl} alt={`Capa de ${song.title}`} />
-      : <Music2 size={size === 'large' ? 24 : 20}/>
+      ? <img className="cover-photo" src={song.coverUrl} alt={song.title} />
+      : <Music2 size={18}/>
   }
 
   function chooseSong(id: string) {
     if (id === currentId) { setPlaying(p => !p); return }
     setProgress(0); setDuration(0); setCurrentId(id); setPlaying(true)
   }
+
   function move(direction: number) {
     if (!songs.length) return
     const i = songs.findIndex(s => s.id === currentId)
-    const next = shuffle && songs.length > 1 ? (i + 1 + Math.floor(Math.random() * (songs.length - 1))) % songs.length : (i + direction + songs.length) % songs.length
+    const next = shuffle && songs.length > 1 
+      ? (i + 1 + Math.floor(Math.random() * (songs.length - 1))) % songs.length 
+      : (i + direction + songs.length) % songs.length
     setProgress(0); setDuration(0); setCurrentId(songs[next].id); setPlaying(true)
   }
+
   function ended() {
     if (repeat && audio.current) { audio.current.currentTime = 0; audio.current.play().catch(() => setPlaying(false)) }
     else move(1)
   }
+
   function addPlaylist(songId?: string) {
     setDraftPlaylist('')
     setDialog({ kind: 'createPlaylist', songId })
@@ -503,8 +504,8 @@ export default function App() {
     event.preventDefault()
     const name = draftPlaylist.trim()
     if (!name || savingDialog) return
-    if (playlists.some(playlist => playlist.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
-      setNotice({ text: 'Já existe uma playlist com esse nome.', error: true })
+    if (playlists.some(p => p.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))) {
+      setNotice({ text: 'Uma playlist com esse título já existe.', error: true })
       return
     }
     const id = crypto.randomUUID()
@@ -513,7 +514,7 @@ export default function App() {
     setSelectedPlaylist(id)
     setTab('playlists')
     setDialog(null)
-    setNotice({ text: `Playlist “${name}” criada com sucesso!` })
+    setNotice({ text: `Playlist “${name}” criada.` })
   }
 
   function addToPlaylist(songId: string) {
@@ -523,14 +524,12 @@ export default function App() {
   function confirmAddToPlaylist(playlistId: string, songId: string) {
     const selected = playlists.find(p => p.id === playlistId)
     if (!selected) return
-    const alreadyAdded = selected.songIds.includes(songId)
-    if (!alreadyAdded) {
-      setPlaylists(prev => prev.map(p => p.id === playlistId
-        ? { ...p, songIds: [...p.songIds, songId] }
-        : p))
+    const exists = selected.songIds.includes(songId)
+    if (!exists) {
+      setPlaylists(prev => prev.map(p => p.id === playlistId ? { ...p, songIds: [...p.songIds, songId] } : p))
     }
     setDialog(null)
-    setNotice({ text: alreadyAdded ? 'Essa música já está na playlist.' : `Música adicionada à playlist “${selected.name}”.` })
+    setNotice({ text: exists ? 'Faixa já presente nesta playlist.' : `Faixa adicionada a “${selected.name}”.` })
   }
 
   function deletePlaylistConfirmed(id: string) {
@@ -538,144 +537,480 @@ export default function App() {
     setPlaylists(prev => prev.filter(p => p.id !== id))
     if (selectedPlaylist === id) setSelectedPlaylist(null)
     setDialog(null)
-    setNotice({ text: target ? `Playlist “${target.name}” excluída. Suas músicas foram mantidas.` : 'Playlist excluída.' })
+    setNotice({ text: target ? `Playlist “${target.name}” removida.` : 'Playlist removida.' })
   }
 
   function songRow(song: Song, index: number, inPlaylist = false) {
-    return <div className={`track ${currentId === song.id ? 'active-track' : ''}`} key={song.id}>
-      <span className="track-index">{index + 1}</span>
-      <button className="track-cover" onClick={() => chooseSong(song.id)} aria-label={`Reproduzir ${song.title}`}>{cover(song)}</button>
-      <button className="track-title" onClick={() => chooseSong(song.id)}><strong>{song.title}</strong><small>{song.artist}{song.album ? ` · ${song.album}` : ''}</small></button>
-      <button className="icon-btn track-play" onClick={() => chooseSong(song.id)} aria-label="Reproduzir ou pausar">{currentId === song.id && playing ? <Pause size={18}/> : <Play size={18}/>}</button>
-      <button className="icon-btn" title="Editar título, artista, álbum e capa" aria-label={`Editar ${song.title}`} onClick={() => openEditSong(song)}><Pencil size={16}/></button>
-      {inPlaylist ? <button className="icon-btn" title="Remover da playlist" onClick={() => setPlaylists(prev => prev.map(p => p.id === selectedPlaylist ? {...p, songIds: p.songIds.filter(id => id !== song.id)} : p))}><Trash2 size={17}/></button> : <>
-        <button className="icon-btn" title="Adicionar a uma playlist" onClick={() => addToPlaylist(song.id)}><Plus size={18}/></button>
-        <button className="icon-btn" title="Excluir música do navegador" aria-label={`Excluir ${song.title}`} onClick={() => setDialog({ kind: 'deleteSong', songId: song.id })}><Trash2 size={17}/></button>
-      </>}
-    </div>
+    const isCurrent = currentId === song.id
+    return (
+      <div className={`track ${isCurrent ? 'active-track' : ''}`} key={song.id}>
+        <span className="track-index">{index + 1}</span>
+        <button className="track-cover" onClick={() => chooseSong(song.id)} aria-label={`Tocar ${song.title}`}>
+          {cover(song)}
+        </button>
+        <button className="track-title" onClick={() => chooseSong(song.id)}>
+          <strong>{song.title}</strong>
+          <small>{song.artist}{song.album ? ` • ${song.album}` : ''}</small>
+        </button>
+        <button className="icon-btn track-play" onClick={() => chooseSong(song.id)} aria-label="Play/Pause">
+          {isCurrent && playing ? <Pause size={17} /> : <Play size={17} />}
+        </button>
+        <div className="track-actions">
+          <button className="icon-btn" title="Editar informações" onClick={() => openEditSong(song)}>
+            <Pencil size={15}/>
+          </button>
+          {inPlaylist ? (
+            <button className="icon-btn" title="Remover da playlist" onClick={() => setPlaylists(prev => prev.map(p => p.id === selectedPlaylist ? {...p, songIds: p.songIds.filter(id => id !== song.id)} : p))}>
+              <Trash2 size={15}/>
+            </button>
+          ) : (
+            <>
+              <button className="icon-btn" title="Adicionar à playlist" onClick={() => addToPlaylist(song.id)}>
+                <Plus size={16}/>
+              </button>
+              <button className="icon-btn" title="Excluir da biblioteca" onClick={() => setDialog({ kind: 'deleteSong', songId: song.id })}>
+                <Trash2 size={15}/>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
-  return <div className="shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-icon"><Music2 size={23}/></div><span>Music<span className="brand-accent">Control</span></span></div>
-      <div className="nav-label">MENU</div>
-      <nav className="navigation">
-        <button className={tab === 'home' ? 'nav-active' : ''} onClick={() => setTab('home')}><Home size={20}/> Início</button>
-        <button className={tab === 'library' ? 'nav-active' : ''} onClick={() => setTab('library')}><Library size={20}/> Biblioteca</button>
-        <button className={tab === 'playlists' ? 'nav-active' : ''} onClick={() => setTab('playlists')}><ListMusic size={20}/> Playlists</button>
-        <button className={tab === 'artists' ? 'nav-active' : ''} onClick={() => setTab('artists')}><UsersRound size={20}/> Artistas</button>
-      </nav>
-      <div className="sidebar-bottom"><Disc3 size={18}/> Sua música. Seu espaço.</div>
-    </aside>
-
-    <main className="content">
-      <div className="topbar"><span className="eyebrow">SUA EXPERIÊNCIA MUSICAL</span><span className="avatar">MC</span></div>
-      {!ready && <p className="muted" role="status">Carregando músicas salvas neste navegador...</p>}
-      {storageError && <p className="muted" role="alert">{storageError}</p>}
-      {tab === 'home' && <>
-        <section className="hero"><div><div className="eyebrow">BEM-VINDO AO MUSICCONTROL</div><h1>O som da sua<br/><em>liberdade.</em></h1><p>Organize suas músicas favoritas e curta cada momento do seu jeito.</p><button className="primary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}><Upload size={18}/> {importing ? 'Salvando músicas...' : 'Importar músicas'}</button></div><div className="hero-art"><Disc3 size={148} strokeWidth={1}/></div></section>
-        <div className="stats"><div className="stat"><Music2 size={22}/><strong>{songs.length}</strong><span>Músicas na biblioteca</span></div><div className="stat"><ListMusic size={22}/><strong>{playlists.length}</strong><span>Playlists criadas</span></div><div className="stat"><Clock3 size={22}/><strong>{currentId ? '1' : '0'}</strong><span>Faixa selecionada</span></div></div>
-        {artists.length > 0 && <><div className="section-head"><h2>Seus artistas</h2><button className="text-button" onClick={() => setTab('artists')}>Ver artistas →</button></div><div className="artist-grid">{artists.slice(0, 5).map(artist => <button key={artistKey(artist.name)} className="artist-card" onClick={() => setTab('artists')}><div className="artist-avatar">{artistPhotos[artistKey(artist.name)] ? <img src={artistPhotos[artistKey(artist.name)]} alt={artist.name}/> : <UsersRound size={30}/>}</div><strong>{artist.name}</strong><small>{artist.count} música(s)</small></button>)}</div></>}
-        <div className="section-head"><h2>Suas músicas</h2><button className="text-button" onClick={() => setTab('library')}>Ver biblioteca →</button></div>
-        {songs.length ? <div className="tracks">{songs.slice(0, 6).map((s, i) => songRow(s, i))}</div> : <div className="empty"><Music2 size={38}/><h3>Comece sua coleção</h3><p>Importe seus arquivos MP3 para ouvir no MusicControl.</p><button className="secondary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}><Plus size={17}/> Adicionar músicas</button></div>}
-      </>}
-      {tab === 'library' && <>
-        <div className="page-head"><div><div className="eyebrow">SUA COLEÇÃO</div><h1>Biblioteca</h1><p>Explore e reproduza suas músicas.</p></div><button className="primary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}><Upload size={18}/> {importing ? 'Salvando músicas...' : 'Adicionar músicas'}</button></div>
-        <div className="library-toolbar"><div className="search"><Search size={19}/><input placeholder="Pesquisar músicas..." value={search} onChange={e => setSearch(e.target.value)}/></div><span>{filtered.length} música(s)</span></div>
-        {filtered.length ? <div className="tracks">{filtered.map((s, i) => songRow(s, i))}</div> : <div className="empty"><Library size={38}/><h3>{songs.length ? 'Nenhum resultado' : 'Sua biblioteca está vazia'}</h3><p>{songs.length ? 'Tente outra pesquisa.' : 'Adicione músicas para começar.'}</p></div>}
-      </>}
-      {tab === 'artists' && <>
-        <div className="page-head"><div><div className="eyebrow">SUA COLEÇÃO</div><h1>Artistas</h1><p>Músicas agrupadas automaticamente pelo nome do artista.</p></div><button className="secondary" onClick={() => void rescanMetadata()} disabled={scanning || !ready}><RefreshCw size={18}/>{scanning ? 'Lendo músicas...' : 'Ler capas e artistas dos MP3 salvos'}</button></div>
-        {!artists.length ? <div className="empty"><UsersRound size={38}/><h3>Nenhum artista ainda</h3><p>Importe músicas para começar a organizar seus artistas.</p></div> : <div className="artist-list">{artists.map(artist => {
-          const artistSongs = songs.filter(s => artistKey(s.artist) === artistKey(artist.name))
-          const photoUrl = artistPhotos[artistKey(artist.name)]
-          return <section className="artist-section" key={artistKey(artist.name)}>
-            <div className="artist-heading"><div className="artist-avatar">{photoUrl ? <img src={photoUrl} alt={artist.name}/> : <UsersRound size={32}/>}</div><div className="artist-heading-text"><h2>{artist.name}</h2><span>{artist.count} música(s) na biblioteca</span></div><button className="secondary photo-button" onClick={() => openRenameArtist(artist.name)}><Pencil size={17}/>Renomear artista</button><button className="secondary photo-button" onClick={() => chooseArtistPhoto(artist.name)}><ImagePlus size={17}/>{photoUrl ? 'Trocar foto' : 'Adicionar foto'}</button></div>
-            <div className="tracks">{artistSongs.map((song, index) => songRow(song, index))}</div>
-          </section>
-        })}</div>}
-        <p className="muted">As fotos dos artistas são adicionadas por você e ficam armazenadas somente neste navegador. Se algum artista estiver incorreto, clique no lápis ao lado da música para editar o nome e a capa, ou use Renomear artista para corrigir todas as faixas.</p>
-      </>}
-      {tab === 'playlists' && <>
-        <div className="page-head"><div><div className="eyebrow">ORGANIZE SEU SOM</div><h1>Playlists</h1><p>Crie coleções para cada momento.</p></div><button className="primary" onClick={() => addPlaylist()}><Plus size={18}/> Nova playlist</button></div>
-        {!playlists.length ? <div className="empty"><ListMusic size={38}/><h3>Suas playlists começam aqui</h3><p>Crie sua primeira playlist para organizar suas músicas.</p><button className="secondary" onClick={() => addPlaylist()}><Plus size={17}/> Criar playlist</button></div> : <><div className="playlist-grid">{playlists.map(p => <button key={p.id} className={`playlist-card ${selectedPlaylist === p.id ? 'playlist-selected' : ''}`} onClick={() => setSelectedPlaylist(p.id)}><div className="playlist-art"><ListMusic size={33}/></div><strong>{p.name}</strong><small>{p.songIds.length} música(s)</small></button>)}</div>{activePlaylist && <section className="playlist-details"><div className="section-head"><h2>{activePlaylist.name}</h2><button className="text-button danger" onClick={() => setDialog({ kind: 'deletePlaylist', playlistId: activePlaylist.id })}><Trash2 size={16}/> Excluir playlist</button></div>{activePlaylist.songIds.length ? <div className="tracks">{activePlaylist.songIds.map(id => songs.find(s => s.id === id)).filter((s): s is Song => !!s).map((s, i) => songRow(s, i, true))}</div> : <p className="muted">Playlist vazia. Vá à Biblioteca e clique em + ao lado de uma música para adicioná-la.</p>}</section>}</>}
-      </>}
-    </main>
-
-    <footer className="player"><div className="now-playing"><div className="now-cover">{songsById ? cover(songsById, 'large') : <Music2 size={24}/>}</div><div className="now-text"><strong>{songsById?.title ?? 'Escolha uma música'}</strong><small>{songsById?.artist ?? 'MusicControl'}</small></div></div><div className="player-center"><div className="player-buttons"><button className={`icon-btn optional ${shuffle ? 'toggled' : ''}`} onClick={() => setShuffle(s => !s)} title="Aleatório"><Shuffle size={17}/></button><button className="icon-btn" onClick={() => move(-1)} disabled={!songs.length} aria-label="Anterior"><SkipBack size={21}/></button><button className="play-main" onClick={() => setPlaying(p => !p)} disabled={!currentId} aria-label={playing ? 'Pausar' : 'Reproduzir'}>{playing ? <Pause size={21} fill="currentColor"/> : <Play size={21} fill="currentColor"/>}</button><button className="icon-btn" onClick={() => move(1)} disabled={!songs.length} aria-label="Próxima"><SkipForward size={21}/></button><button className={`icon-btn optional ${repeat ? 'toggled' : ''}`} onClick={() => setRepeat(s => !s)} title="Repetir faixa"><Repeat2 size={17}/></button></div><div className="seek"><span>{time(progress)}</span><input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(progress, duration || 1)} onChange={e => { const t = Number(e.target.value); if (audio.current) audio.current.currentTime = t; setProgress(t) }}/><span>{time(duration)}</span></div></div><div className="volume"><Volume2 size={19}/><input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))}/></div></footer>
-    {notice && <div className={`mc-toast ${notice.error ? 'mc-toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>
-      {notice.error ? <AlertCircle size={20}/> : <CheckCircle2 size={20}/>}
-      <span>{notice.text}</span>
-      <button className="modal-icon" aria-label="Fechar aviso" onClick={() => setNotice(null)}><X size={18}/></button>
-    </div>}
-
-    {dialog && <div className="mc-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !savingDialog) setDialog(null) }}>
-      <section className="mc-modal" role="dialog" aria-modal="true" aria-labelledby="mc-modal-title">
-        <div className="mc-modal-header">
-          <div className="mc-modal-symbol">{dialog.kind === 'createPlaylist' || dialog.kind === 'choosePlaylist' ? <ListMusic size={23}/> : dialog.kind === 'editSong' ? <Images size={23}/> : <Pencil size={23}/>}</div>
-          <button className="modal-icon" aria-label="Fechar janela" disabled={savingDialog} onClick={() => setDialog(null)}><X size={21}/></button>
+  return (
+    <div className={`shell ${songsById ? "has-player" : "no-player"}`}>
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-icon"><Music2 size={20}/></div>
+          <span>Music<span className="brand-accent">Control</span></span>
         </div>
 
-        {dialog.kind === 'createPlaylist' && <form onSubmit={createPlaylist}>
-          <h2 id="mc-modal-title">Criar nova playlist</h2>
-          <p className="mc-modal-copy">Dê um nome à sua coleção de músicas.</p>
-          <label className="mc-field">Nome da playlist
-            <input ref={dialogInput} value={draftPlaylist} onChange={event => setDraftPlaylist(event.target.value)} maxLength={80} placeholder="Ex.: Minhas favoritas" required />
-          </label>
-          <div className="mc-modal-actions"><button type="button" className="secondary" onClick={() => setDialog(null)}>Cancelar</button><button className="primary" disabled={!draftPlaylist.trim()} type="submit"><Plus size={17}/>Criar playlist</button></div>
-        </form>}
+        <div className="nav-label">COLEÇÃO</div>
+        <nav className="navigation">
+          <button className={tab === 'home' ? 'nav-active' : ''} onClick={() => setTab('home')}><Home size={18}/> <span>Início</span></button>
+          <button className={tab === 'library' ? 'nav-active' : ''} onClick={() => setTab('library')}><Library size={18}/> <span>Biblioteca</span></button>
+          <button className={tab === 'playlists' ? 'nav-active' : ''} onClick={() => setTab('playlists')}><ListMusic size={18}/> <span>Playlists</span></button>
+          <button className={tab === 'artists' ? 'nav-active' : ''} onClick={() => setTab('artists')}><UsersRound size={18}/> <span>Artistas</span></button>
+        </nav>
 
-        {dialog.kind === 'choosePlaylist' && <div>
-          <h2 id="mc-modal-title">Adicionar à playlist</h2>
-          <p className="mc-modal-copy">Selecione onde deseja colocar esta música.</p>
-          {playlists.length > 0 && <div className="mc-playlist-choices">{playlists.map(p => <button key={p.id} className="mc-playlist-choice" onClick={() => confirmAddToPlaylist(p.id, dialog.songId)}><div className="mc-playlist-choice-icon"><ListMusic size={20}/></div><span><strong>{p.name}</strong><small>{p.songIds.length} música(s)</small></span><Plus size={19}/></button>)}</div>}
-          {!playlists.length && <p className="mc-modal-copy">Você ainda não tem playlists.</p>}
-          <button className="mc-new-playlist" onClick={() => addPlaylist(dialog.songId)}><Plus size={18}/>Criar uma nova playlist</button>
-          <div className="mc-modal-actions"><button className="secondary" onClick={() => setDialog(null)}>Fechar</button></div>
-        </div>}
+        <div className="sidebar-bottom">
+          <Disc3 size={16}/> MUSICCONTROL <span>1.6.1</span>
+        </div>
+      </aside>
 
-        {dialog.kind === 'editSong' && dialogSong && <form onSubmit={event => void saveSongEdit(event)}>
-          <h2 id="mc-modal-title">Editar música</h2>
-          <p className="mc-modal-copy">Altere o nome, o artista, o álbum e a capa desta faixa.</p>
-          <div className="mc-cover-editor">
-            <div className="mc-edit-cover">{!removeCover && (coverPreview || dialogSong.coverUrl) ? <img src={coverPreview || dialogSong.coverUrl} alt="Prévia da capa"/> : <Music2 size={38}/>}</div>
-            <div className="mc-cover-tools">
-              <label className="secondary mc-file-label"><ImagePlus size={17}/> Escolher capa
-                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { chooseNewCover(event.target.files?.[0]); event.target.value = '' }} />
-              </label>
-              {(!removeCover && (coverFile || dialogSong.coverUrl)) && <button type="button" className="text-button danger" onClick={() => { setCoverFile(null); setCoverPreview(null); setRemoveCover(true) }}>Remover capa</button>}
-              <small>JPG, PNG ou WebP • até 5 MB</small>
+      <main className="content">
+        <div className="topbar">
+          <span className="topbar-location">
+            Coleção <span className="topbar-separator">/</span> 
+            {tab === "home" ? "Início" : tab === "library" ? "Biblioteca" : tab === "artists" ? "Artistas" : "Playlists"}
+          </span>
+          <span className="avatar">MC</span>
+        </div>
+
+        {storageError && <p className="muted" role="alert">{storageError}</p>}
+
+        {tab === 'home' && (
+          <>
+            <section className="hero">
+              <div className="hero-copy">
+                <span className="hero-caption">SALA DE AUDIÇÃO</span>
+                <h1>Sua biblioteca.<br/><em>Livre e local.</em></h1>
+                <p>Reproduza álbuns e faixas sem intermediários, diretamente do armazenamento protegido do seu navegador.</p>
+                <div className="hero-actions">
+                  <button className="primary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}>
+                    <Upload size={16}/> {importing ? 'Importando...' : 'Adicionar músicas'}
+                  </button>
+                  {songs.length > 0 && (
+                    <button className="hero-link" onClick={() => setTab('library')}>
+                      Ver biblioteca completa →
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="hero-art" aria-hidden="true">
+                <div className="vinyl">
+                  <div className="vinyl-center"><Music2 size={28}/></div>
+                </div>
+              </div>
+            </section>
+
+            <div className="collection-strip">
+              <span><strong>{songs.length}</strong> {songs.length === 1 ? 'faixa' : 'faixas'}</span>
+              <i/>
+              <span><strong>{artists.length}</strong> {artists.length === 1 ? 'artista' : 'artistas'}</span>
+              <i/>
+              <span><strong>{playlists.length}</strong> {playlists.length === 1 ? 'playlist' : 'playlists'}</span>
+            </div>
+
+            {artists.length > 0 && (
+              <>
+                <div className="section-head">
+                  <h2>Artistas em destaque</h2>
+                  <button className="text-button" onClick={() => setTab('artists')}>Todos os artistas</button>
+                </div>
+                <div className="artist-grid">
+                  {artists.slice(0, 6).map(artist => (
+                    <button key={artistKey(artist.name)} className="artist-card" onClick={() => setTab('artists')}>
+                      <div className="artist-avatar">
+                        {artistPhotos[artistKey(artist.name)] ? <img src={artistPhotos[artistKey(artist.name)]} alt={artist.name}/> : <UsersRound size={26}/>}
+                      </div>
+                      <strong>{artist.name}</strong>
+                      <small>{artist.count} faixa(s)</small>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="section-head">
+              <h2>Adicionadas recentemente</h2>
+              <button className="text-button" onClick={() => setTab('library')}>Ver acervo</button>
+            </div>
+            {songs.length ? (
+              <div className="tracks">{songs.slice(0, 8).map((s, i) => songRow(s, i))}</div>
+            ) : (
+              <div className="empty">
+                <Music2 size={36}/>
+                <h3>Seu catálogo está vazio</h3>
+                <p>Importe arquivos de áudio (MP3, FLAC, WAV) para começar a ouvir.</p>
+                <button className="secondary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}>
+                  <Plus size={16}/> Carregar arquivos
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === 'library' && (
+          <>
+            <div className="page-head">
+              <div>
+                <div className="eyebrow">ACERVO</div>
+                <h1>Biblioteca</h1>
+                <p>Gerencie e execute suas faixas salvas localmente.</p>
+              </div>
+              <button className="primary" disabled={!ready || importing || !!storageError} onClick={() => filesInput.current?.click()}>
+                <Upload size={16}/> {importing ? 'Importando...' : 'Adicionar músicas'}
+              </button>
+            </div>
+
+            <div className="library-toolbar">
+              <div className="search">
+                <Search size={16}/>
+                <input placeholder="Filtrar por faixa, artista ou álbum..." value={search} onChange={e => setSearch(e.target.value)}/>
+              </div>
+              <span>{filtered.length} {filtered.length === 1 ? 'música encontrada' : 'músicas encontradas'}</span>
+            </div>
+
+            {filtered.length ? (
+              <div className="tracks">{filtered.map((s, i) => songRow(s, i))}</div>
+            ) : (
+              <div className="empty">
+                <Library size={36}/>
+                <h3>{songs.length ? 'Nenhum resultado para a busca' : 'Biblioteca vazia'}</h3>
+                <p>{songs.length ? 'Verifique a grafia ou limpe o campo de busca.' : 'Adicione faixas de áudio para gerenciar seu acervo.'}</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === 'artists' && (
+          <>
+            <div className="page-head">
+              <div>
+                <div className="eyebrow">CATÁLOGO</div>
+                <h1>Artistas</h1>
+                <p>Agrupamento automático de faixas por artista.</p>
+              </div>
+              <button className="secondary" onClick={() => void rescanMetadata()} disabled={scanning || !ready}>
+                <RefreshCw size={16}/> {scanning ? 'Sincronizando...' : 'Ler metadados ID3'}
+              </button>
+            </div>
+
+            {!artists.length ? (
+              <div className="empty">
+                <UsersRound size={36}/>
+                <h3>Nenhum artista detectado</h3>
+                <p>Adicione músicas para que os artistas sejam listados aqui.</p>
+              </div>
+            ) : (
+              <div className="artist-list">
+                {artists.map(artist => {
+                  const artistSongs = songs.filter(s => artistKey(s.artist) === artistKey(artist.name))
+                  const photoUrl = artistPhotos[artistKey(artist.name)]
+                  return (
+                    <section className="artist-section" key={artistKey(artist.name)}>
+                      <div className="artist-heading">
+                        <div className="artist-avatar">
+                          {photoUrl ? <img src={photoUrl} alt={artist.name}/> : <UsersRound size={28}/>}
+                        </div>
+                        <div className="artist-heading-text">
+                          <h2>{artist.name}</h2>
+                          <span>{artist.count} faixa(s) na biblioteca</span>
+                        </div>
+                        <button className="secondary" onClick={() => openRenameArtist(artist.name)}>
+                          <Pencil size={15}/> Renomear
+                        </button>
+                        <button className="secondary" onClick={() => chooseArtistPhoto(artist.name)}>
+                          <ImagePlus size={15}/> {photoUrl ? 'Alterar foto' : 'Foto'}
+                        </button>
+                      </div>
+                      <div className="tracks">{artistSongs.map((song, index) => songRow(song, index))}</div>
+                    </section>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === 'playlists' && (
+          <>
+            <div className="page-head">
+              <div>
+                <div className="eyebrow">CURADORIA</div>
+                <h1>Playlists</h1>
+                <p>Organize suas seleções de faixas.</p>
+              </div>
+              <button className="primary" onClick={() => addPlaylist()}>
+                <Plus size={16}/> Nova playlist
+              </button>
+            </div>
+
+            {!playlists.length ? (
+              <div className="empty">
+                <ListMusic size={36}/>
+                <h3>Nenhuma playlist criada</h3>
+                <p>Organize suas audições criando seleções temáticas.</p>
+                <button className="secondary" onClick={() => addPlaylist()}>
+                  <Plus size={16}/> Criar primeira playlist
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="playlist-grid">
+                  {playlists.map(p => (
+                    <button key={p.id} className={`playlist-card ${selectedPlaylist === p.id ? 'playlist-selected' : ''}`} onClick={() => setSelectedPlaylist(p.id)}>
+                      <div className="playlist-art"><ListMusic size={28}/></div>
+                      <strong>{p.name}</strong>
+                      <small>{p.songIds.length} faixa(s)</small>
+                    </button>
+                  ))}
+                </div>
+
+                {activePlaylist && (
+                  <section style={{ marginTop: '36px' }}>
+                    <div className="section-head">
+                      <h2>{activePlaylist.name}</h2>
+                      <button className="text-button danger" onClick={() => setDialog({ kind: 'deletePlaylist', playlistId: activePlaylist.id })}>
+                        <Trash2 size={15}/> Excluir playlist
+                      </button>
+                    </div>
+                    {activePlaylist.songIds.length ? (
+                      <div className="tracks">
+                        {activePlaylist.songIds
+                          .map(id => songs.find(s => s.id === id))
+                          .filter((s): s is Song => !!s)
+                          .map((s, i) => songRow(s, i, true))}
+                      </div>
+                    ) : (
+                      <p className="muted" style={{ padding: '16px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                        Nenhuma música adicionada ainda a esta playlist.
+                      </p>
+                    )}
+                  </section>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Docked Control Deck */}
+      {songsById && (
+        <footer className="player">
+          <div className="now-playing">
+            <div className="now-cover">{cover(songsById)}</div>
+            <div className="now-text">
+              <strong>{songsById.title}</strong>
+              <small>{songsById.artist}</small>
             </div>
           </div>
-          <label className="mc-field">Nome da música<input ref={dialogInput} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} maxLength={200} required /></label>
-          <label className="mc-field">Nome do artista<input value={draftArtist} onChange={event => setDraftArtist(event.target.value)} maxLength={160} required /></label>
-          <label className="mc-field">Álbum (opcional)<input value={draftAlbum} onChange={event => setDraftAlbum(event.target.value)} maxLength={160} /></label>
-          <div className="mc-modal-actions"><button type="button" className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button><button type="submit" className="primary" disabled={savingDialog || !draftTitle.trim() || !draftArtist.trim()}>{savingDialog ? 'Salvando...' : 'Salvar alterações'}</button></div>
-        </form>}
 
-        {dialog.kind === 'renameArtist' && <form onSubmit={event => void saveArtistName(event)}>
-          <h2 id="mc-modal-title">Renomear artista</h2>
-          <p className="mc-modal-copy">O novo nome será aplicado a todas as músicas de “{dialog.artist}”.</p>
-          <label className="mc-field">Novo nome do artista<input ref={dialogInput} value={draftArtist} onChange={event => setDraftArtist(event.target.value)} maxLength={160} required /></label>
-          <div className="mc-modal-actions"><button type="button" className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button><button className="primary" type="submit" disabled={savingDialog || !draftArtist.trim()}>{savingDialog ? 'Salvando...' : 'Salvar nome'}</button></div>
-        </form>}
+          <div className="player-center">
+            <div className="player-buttons">
+              <button className={`icon-btn optional ${shuffle ? 'toggled' : ''}`} onClick={() => setShuffle(s => !s)} title="Ordem aleatória">
+                <Shuffle size={16}/>
+              </button>
+              <button className="icon-btn" onClick={() => move(-1)} disabled={!songs.length} aria-label="Faixa anterior">
+                <SkipBack size={18}/>
+              </button>
+              <button className="play-main" onClick={() => setPlaying(p => !p)} disabled={!currentId} aria-label={playing ? 'Pausar' : 'Reproduzir'}>
+                {playing ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}
+              </button>
+              <button className="icon-btn" onClick={() => move(1)} disabled={!songs.length} aria-label="Próxima faixa">
+                <SkipForward size={18}/>
+              </button>
+              <button className={`icon-btn optional ${repeat ? 'toggled' : ''}`} onClick={() => setRepeat(s => !s)} title="Repetir">
+                <Repeat2 size={16}/>
+              </button>
+            </div>
+            <div className="seek">
+              <span>{time(progress)}</span>
+              <input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(progress, duration || 1)} onChange={e => { const t = Number(e.target.value); if (audio.current) audio.current.currentTime = t; setProgress(t) }}/>
+              <span>{time(duration)}</span>
+            </div>
+          </div>
 
-        {dialog.kind === 'deletePlaylist' && <div>
-          <h2 id="mc-modal-title">Excluir playlist?</h2>
-          <p className="mc-modal-copy">A playlist “{dialogPlaylist?.name}” será removida, mas suas músicas continuarão na biblioteca.</p>
-          <div className="mc-modal-actions"><button className="secondary" onClick={() => setDialog(null)}>Cancelar</button><button className="mc-danger-button" onClick={() => deletePlaylistConfirmed(dialog.playlistId)}><Trash2 size={17}/>Excluir playlist</button></div>
-        </div>}
+          <div className="volume">
+            <Volume2 size={17}/>
+            <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))}/>
+          </div>
+        </footer>
+      )}
 
-        {dialog.kind === 'deleteSong' && dialogSong && <div>
-          <h2 id="mc-modal-title">Excluir música?</h2>
-          <p className="mc-modal-copy">“{dialogSong.title}” será removida do armazenamento local e das playlists. Esta ação não pode ser desfeita.</p>
-          <div className="mc-modal-actions"><button className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button><button className="mc-danger-button" disabled={savingDialog} onClick={() => void removeSongConfirmed(dialog.songId)}><Trash2 size={17}/>{savingDialog ? 'Excluindo...' : 'Excluir música'}</button></div>
-        </div>}
-      </section>
-    </div>}
+      {/* Toast Notification */}
+      {notice && (
+        <div className={`mc-toast ${notice.error ? 'mc-toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>
+          {notice.error ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>}
+          <span>{notice.text}</span>
+          <button className="icon-btn" style={{ marginLeft: 'auto', width: '24px', height: '24px' }} onClick={() => setNotice(null)}>
+            <X size={15}/>
+          </button>
+        </div>
+      )}
 
-    <input ref={artistPhotoInput} className="hidden-input" type="file" accept="image/*" onChange={e => { void saveArtistPhoto(e.target.files?.[0]); e.target.value = '' }}/>
-    <input ref={filesInput} className="hidden-input" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac" multiple disabled={!ready || importing || !!storageError} onChange={e => { void importSongs(e.target.files); e.target.value = '' }}/>
-    <audio ref={audio} src={songsById?.url} preload="metadata" onLoadedMetadata={e => { setDuration(e.currentTarget.duration || 0); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} onCanPlay={e => { if (playing && e.currentTarget.paused) e.currentTarget.play().catch(() => setPlaying(false)) }} onTimeUpdate={e => setProgress(e.currentTarget.currentTime)} onEnded={ended} onError={() => { if (songsById) { setPlaying(false); setNotice({ text: 'Não foi possível reproduzir este arquivo. Tente um MP3 compatível.', error: true }) } }}/>
-  </div>
+      {/* Dialog System */}
+      {dialog && (
+        <div className="mc-overlay" onMouseDown={e => { if (e.target === e.currentTarget && !savingDialog) setDialog(null) }}>
+          <section className="mc-modal" role="dialog" aria-modal="true">
+            <div className="mc-modal-header">
+              <div className="mc-modal-symbol">
+                {dialog.kind === 'createPlaylist' || dialog.kind === 'choosePlaylist' ? <ListMusic size={20}/> : dialog.kind === 'editSong' ? <Images size={20}/> : <Pencil size={20}/>}
+              </div>
+              <button className="icon-btn" onClick={() => setDialog(null)} disabled={savingDialog}>
+                <X size={18}/>
+              </button>
+            </div>
+
+            {dialog.kind === 'createPlaylist' && (
+              <form onSubmit={createPlaylist}>
+                <h2>Nova Playlist</h2>
+                <p className="mc-modal-copy">Defina o nome da sua curadoria.</p>
+                <label className="mc-field">
+                  Nome da playlist
+                  <input ref={dialogInput} value={draftPlaylist} onChange={e => setDraftPlaylist(e.target.value)} maxLength={80} placeholder="Ex.: Clássicos Acústicos" required />
+                </label>
+                <div className="mc-modal-actions">
+                  <button type="button" className="secondary" onClick={() => setDialog(null)}>Cancelar</button>
+                  <button className="primary" disabled={!draftPlaylist.trim()} type="submit">Criar</button>
+                </div>
+              </form>
+            )}
+
+            {dialog.kind === 'choosePlaylist' && (
+              <div>
+                <h2>Adicionar à Playlist</h2>
+                <p className="mc-modal-copy">Escolha a playlist de destino para a música selecionada.</p>
+                {playlists.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', marginBottom: '16px' }}>
+                    {playlists.map(p => (
+                      <button key={p.id} className="secondary" style={{ justifyContent: 'space-between', padding: '12px 14px' }} onClick={() => confirmAddToPlaylist(p.id, dialog.songId)}>
+                        <span>{p.name}</span>
+                        <Plus size={16}/>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mc-modal-copy">Nenhuma playlist cadastrada.</p>
+                )}
+                <div className="mc-modal-actions">
+                  <button className="secondary" onClick={() => setDialog(null)}>Fechar</button>
+                </div>
+              </div>
+            )}
+
+            {dialog.kind === 'editSong' && dialogSong && (
+              <form onSubmit={e => void saveSongEdit(e)}>
+                <h2>Editar Faixa</h2>
+                <p className="mc-modal-copy">Modifique os metadados do arquivo.</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '8px', background: 'var(--bg-canvas)', border: '1px solid var(--border-muted)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+                    {!removeCover && (coverPreview || dialogSong.coverUrl) ? <img src={coverPreview || dialogSong.coverUrl} alt="Capa" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <Music2 size={24}/>}
+                  </div>
+                  <div>
+                    <label className="secondary" style={{ cursor: 'pointer', display: 'inline-flex', padding: '8px 12px' }}>
+                      <ImagePlus size={14}/> Carregar capa
+                      <input type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={e => { chooseNewCover(e.target.files?.[0]); e.target.value = '' }} />
+                    </label>
+                    {(!removeCover && (coverFile || dialogSong.coverUrl)) && (
+                      <button type="button" className="text-button danger" style={{ display: 'block', marginTop: '6px' }} onClick={() => { setCoverFile(null); setCoverPreview(null); setRemoveCover(true) }}>
+                        Remover capa
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <label className="mc-field">Título<input ref={dialogInput} value={draftTitle} onChange={e => setDraftTitle(e.target.value)} required /></label>
+                <label className="mc-field">Artista<input value={draftArtist} onChange={e => setDraftArtist(e.target.value)} required /></label>
+                <label className="mc-field">Álbum<input value={draftAlbum} onChange={e => setDraftAlbum(e.target.value)} /></label>
+                <div className="mc-modal-actions">
+                  <button type="button" className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button>
+                  <button type="submit" className="primary" disabled={savingDialog || !draftTitle.trim() || !draftArtist.trim()}>{savingDialog ? 'Salvando...' : 'Salvar'}</button>
+                </div>
+              </form>
+            )}
+
+            {dialog.kind === 'renameArtist' && (
+              <form onSubmit={e => void saveArtistName(e)}>
+                <h2>Renomear Artista</h2>
+                <p className="mc-modal-copy">Atualiza o nome do artista em todas as faixas associadas.</p>
+                <label className="mc-field">Nome do artista<input ref={dialogInput} value={draftArtist} onChange={e => setDraftArtist(e.target.value)} required /></label>
+                <div className="mc-modal-actions">
+                  <button type="button" className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button>
+                  <button className="primary" type="submit" disabled={savingDialog || !draftArtist.trim()}>{savingDialog ? 'Salvando...' : 'Atualizar'}</button>
+                </div>
+              </form>
+            )}
+
+            {dialog.kind === 'deletePlaylist' && (
+              <div>
+                <h2>Excluir Playlist?</h2>
+                <p className="mc-modal-copy">A playlist “{dialogPlaylist?.name}” será removida. Os arquivos continuarão preservados na biblioteca.</p>
+                <div className="mc-modal-actions">
+                  <button className="secondary" onClick={() => setDialog(null)}>Cancelar</button>
+                  <button className="mc-danger-button" onClick={() => deletePlaylistConfirmed(dialog.playlistId)}>Excluir</button>
+                </div>
+              </div>
+            )}
+
+            {dialog.kind === 'deleteSong' && dialogSong && (
+              <div>
+                <h2>Excluir Faixa?</h2>
+                <p className="mc-modal-copy">“{dialogSong.title}” será apagada definitivamente do armazenamento local.</p>
+                <div className="mc-modal-actions">
+                  <button className="secondary" disabled={savingDialog} onClick={() => setDialog(null)}>Cancelar</button>
+                  <button className="mc-danger-button" disabled={savingDialog} onClick={() => void removeSongConfirmed(dialog.songId)}>{savingDialog ? 'Excluindo...' : 'Confirmar exclusão'}</button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* Hidden inputs & audio element */}
+      <input ref={artistPhotoInput} className="hidden-input" type="file" accept="image/*" onChange={e => { void saveArtistPhoto(e.target.files?.[0]); e.target.value = '' }}/>
+      <input ref={filesInput} className="hidden-input" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac" multiple disabled={!ready || importing || !!storageError} onChange={e => { void importSongs(e.target.files); e.target.value = '' }}/>
+      <audio 
+        ref={audio} 
+        src={songsById?.url} 
+        preload="metadata" 
+        onLoadedMetadata={e => { setDuration(e.currentTarget.duration || 0); if (playing) e.currentTarget.play().catch(() => setPlaying(false)) }} 
+        onCanPlay={e => { if (playing && e.currentTarget.paused) e.currentTarget.play().catch(() => setPlaying(false)) }} 
+        onTimeUpdate={e => setProgress(e.currentTarget.currentTime)} 
+        onEnded={ended} 
+        onError={() => { if (songsById) { setPlaying(false); setNotice({ text: 'Falha ao decodificar arquivo de áudio.', error: true }) } }}
+      />
+    </div>
+  )
 }
