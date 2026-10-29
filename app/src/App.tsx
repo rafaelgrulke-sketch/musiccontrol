@@ -5,13 +5,14 @@ import {
   Home, Library, ListMusic, Upload, Search, Play, Pause, 
   SkipBack, SkipForward, Volume2, Music2, Plus, Trash2, 
   Disc3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, 
-  RefreshCw, X, CheckCircle2, AlertCircle, Images 
+  RefreshCw, X, CheckCircle2, AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown, Maximize2 
 } from 'lucide-react'
 import './App.css'
 import './redesign.css'
 import './theme2.css'
 import './editorial21.css'
 import './musiccontrol30.css'
+import './musiccontrol33.css'
 import CinematicScene from './components/CinematicScene'
 import { testarSupabase } from './testeSupabase'
 
@@ -132,6 +133,15 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [queue, setQueue] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('musiccontrol:queue') || '[]') as string[] } catch { return [] }
+  })
+  const [queueOpen, setQueueOpen] = useState(false)
+  const [coverOpen, setCoverOpen] = useState(false)
+  const queueRef = useRef<string[]>(queue)
+  queueRef.current = queue
+  useEffect(() => { localStorage.setItem('musiccontrol:queue', JSON.stringify(queue)) }, [queue])
+
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(() => loadPlayback()?.volume ?? 0.8)
@@ -608,12 +618,35 @@ export default function App() {
       : <Music2 size={18}/>
   }
 
+  function enqueue(id: string) {
+    if (!songs.some(s => s.id === id)) return
+    setQueue(q => [...q, id])
+    setNotice({ text: 'Música adicionada à fila.' })
+  }
+
+  function reorderQueue(index: number, direction: number) {
+    setQueue(q => {
+      const target = index + direction
+      if (target < 0 || target >= q.length) return q
+      const next = [...q]; [next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
+  }
+
   function chooseSong(id: string) {
     if (id === currentId) { setPlaying(p => !p); return }
     pendingSeek.current = null; setProgress(0); setDuration(0); setCurrentId(id); setPlaying(true)
   }
 
   function move(direction: number) {
+    if (direction > 0 && queueRef.current.length) {
+      const nextId = queueRef.current.find(id => songs.some(s => s.id === id))
+      setQueue(q => q.slice(nextId ? q.indexOf(nextId) + 1 : q.length))
+      if (nextId) {
+        pendingSeek.current = null; setProgress(0); setDuration(0); setCurrentId(nextId); setPlaying(true)
+        return
+      }
+    }
     if (!songs.length) return
     const i = songs.findIndex(s => s.id === currentId)
     const next = shuffle && songs.length > 1 
@@ -623,7 +656,7 @@ export default function App() {
   }
 
   function ended() {
-    if (repeat && audio.current) { audio.current.currentTime = 0; audio.current.play().catch(() => setPlaying(false)) }
+    if (repeat && audio.current && queueRef.current.length === 0) { audio.current.currentTime = 0; audio.current.play().catch(() => setPlaying(false)) }
     else move(1)
   }
 
@@ -688,6 +721,9 @@ export default function App() {
           {isCurrent && playing ? <Pause size={17} /> : <Play size={17} />}
         </button>
         <div className="track-actions">
+          <button className="icon-btn" title="Adicionar à fila de reprodução" aria-label={`Adicionar ${song.title} à fila`} onClick={() => enqueue(song.id)}>
+            <ListOrdered size={16}/>
+          </button>
           <button className="icon-btn" title="Editar informações" onClick={() => openEditSong(song)}>
             <Pencil size={15}/>
           </button>
@@ -981,7 +1017,7 @@ export default function App() {
       {songsById && (
         <footer className="player">
           <div className="now-playing">
-            <div className="now-cover">{cover(songsById)}</div>
+            <button className="now-cover mc-cover-trigger" title="Ampliar capa" aria-label="Ver capa ampliada" onClick={() => setCoverOpen(true)}>{cover(songsById)}<Maximize2 size={12} className="mc-cover-expand"/></button>
             <div className="now-text">
               <strong>{songsById.title}</strong>
               <small>{songsById.artist}</small>
@@ -1013,6 +1049,9 @@ export default function App() {
             </div>
           </div>
 
+          <button className="icon-btn mc-queue-toggle" title="Abrir fila" aria-label="Abrir fila de reprodução" onClick={() => setQueueOpen(true)}>
+            <ListOrdered size={20}/><span>{queue.length}</span>
+          </button>
           <div className="volume">
             <Volume2 size={17}/>
             <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))}/>
@@ -1020,6 +1059,31 @@ export default function App() {
         </footer>
       )}
 
+      {queueOpen && <div className="mc-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setQueueOpen(false) }}>
+        <section className="mc-queue-panel" role="dialog" aria-modal="true" aria-label="Fila de reprodução">
+          <header><h2>Fila de reprodução</h2><button className="icon-btn" onClick={() => setQueueOpen(false)} aria-label="Fechar fila"><X/></button></header>
+          <p>Adicione músicas de qualquer área e mude a sequência usando as setas.</p>
+          {songsById && <div className="mc-queue-now"><strong>Tocando agora</strong><span>{songsById.title} — {songsById.artist}</span></div>}
+          {queue.length === 0 ? <p>Nenhuma música na fila. Use o botão de fila ao lado de qualquer faixa.</p> :
+            <div className="mc-queue-items">{queue.map((id, index) => {
+              const song = songs.find(s => s.id === id)
+              return <div className="mc-queue-item" key={`${id}-${index}`}>
+                <span>{index + 1}.</span><div className="mc-queue-info"><strong>{song?.title || 'Música indisponível'}</strong><small>{song?.artist}</small></div>
+                <button className="icon-btn" disabled={index === 0} onClick={() => reorderQueue(index, -1)} aria-label="Subir na fila"><ChevronUp size={18}/></button>
+                <button className="icon-btn" disabled={index === queue.length - 1} onClick={() => reorderQueue(index, 1)} aria-label="Descer na fila"><ChevronDown size={18}/></button>
+                <button className="icon-btn" onClick={() => setQueue(q => q.filter((_, i) => i !== index))} aria-label="Remover da fila"><X size={18}/></button>
+              </div>
+            })}</div>}
+          <button className="secondary" onClick={() => setQueue([])}>Limpar fila</button>
+        </section>
+      </div>}
+      {coverOpen && songsById && <div className="mc-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setCoverOpen(false) }}>
+        <section className="mc-artwork-modal" role="dialog" aria-modal="true" aria-label="Capa da música">
+          <button className="icon-btn mc-artwork-close" onClick={() => setCoverOpen(false)} aria-label="Fechar capa"><X/></button>
+          {songsById.coverUrl ? <img src={songsById.coverUrl} alt={`Capa de ${songsById.title}`}/> : <div className="mc-artwork-empty"><Music2 size={70}/></div>}
+          <strong>{songsById.title}</strong><span>{songsById.artist}</span>
+        </section>
+      </div>}
       {/* Toast Notification */}
       {notice && (
         <div className={`mc-toast ${notice.error ? 'mc-toast-error' : ''}`} role={notice.error ? 'alert' : 'status'}>
