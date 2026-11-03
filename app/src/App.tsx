@@ -1,4 +1,12 @@
-import {\n  useEffect, useRef, Library, ListMusic, Upload, Search, Play, Pause, Music2, Plus, Trash2, UsersRound, ImagePlus, Pencil, Cloud, CloudUpload, CloudDownload, HardDriveDownload, ShieldCheck, RefreshCw, X, CheckCircle2, AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown\n} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { parseBlob } from 'music-metadata'
+import {
+  Library, ListMusic, Upload, Search, Play, Pause, Music2, Plus, Trash2,
+  UsersRound, ImagePlus, Pencil, Cloud, CloudUpload, CloudDownload,
+  HardDriveDownload, ShieldCheck, RefreshCw, X, CheckCircle2,
+  AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown
+} from 'lucide-react'
 import './App.css'
 import './redesign.css'
 import './theme2.css'
@@ -955,7 +963,7 @@ export default function App() {
             <section className="hero mc2-hero">
               <CinematicScene />
               <div className="hero-copy">
-                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 3.4</span>
+                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 3.6</span>
                 <h1>O SOM NO<br/><em>SEU RITMO.</em></h1>
                 <p>Reproduza álbuns e faixas sem intermediários, diretamente do armazenamento protegido do seu navegador.</p>
                 <div className="hero-actions">
