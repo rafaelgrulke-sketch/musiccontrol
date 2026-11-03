@@ -14,6 +14,8 @@ import './editorial21.css'
 import './musiccontrol30.css'
 import './musiccontrol33.css'
 import CinematicScene from './components/CinematicScene'
+import CardFanCarousel from './components/ui/card-fan-carousel'
+import './musiccontrol35.css'
 import { useMusicControlAuth } from './AuthContext'
 import { listCloudSongs, listCloudPlaylists, uploadSong, uploadPlaylists, downloadCloudSong } from './cloudSync'
 import type { CloudSong, CloudPlaylist } from './cloudSync'
@@ -197,6 +199,7 @@ export default function App() {
   const activePlaylist = playlists.find(p => p.id === selectedPlaylist)
   const dialogSong = dialog && ('songId' in dialog) ? songs.find(s => s.id === dialog.songId) : undefined
   const dialogPlaylist = dialog?.kind === 'deletePlaylist' ? playlists.find(p => p.id === dialog.playlistId) : undefined
+  const featuredCovers = songs.filter(song => Boolean(song.coverUrl)).slice(0, 14)
   const filtered = songs.filter(s => `${s.title} ${s.artist} ${s.album ?? ''}`.toLowerCase().includes(search.toLowerCase()))
   const artists = Object.values(songs.reduce<Record<string, { name: string; count: number }>>((acc, song) => {
     const key = artistKey(song.artist)
@@ -1003,6 +1006,32 @@ export default function App() {
               <i/>
               <span><strong>{playlists.length}</strong> {playlists.length === 1 ? 'playlist' : 'playlists'}</span>
             </div>
+
+            {featuredCovers.length > 0 && (
+              <section className="mc35-feature" aria-label="Capas da sua coleção">
+                <header className="mc35-feature-head">
+                  <div>
+                    <span className="mc35-feature-kicker">REDESCUBRA SUA COLEÇÃO</span>
+                    <h2>Suas capas. <em>Seu som.</em></h2>
+                    <p>Explore as músicas como um leque de capas. Escolha uma e deixe tocar.</p>
+                  </div>
+                  <button className="text-button" onClick={() => setTab('library')}>Abrir biblioteca →</button>
+                </header>
+                <CardFanCarousel
+                  key={userId}
+                  cards={featuredCovers.map(song => ({
+                    imgUrl: song.coverUrl!,
+                    alt: `Capa de ${song.title}`,
+                    title: song.title,
+                    subtitle: song.artist,
+                  }))}
+                  onCardClick={index => {
+                    const song = featuredCovers[index]
+                    if (song) chooseSong(song.id)
+                  }}
+                />
+              </section>
+            )}
 
             {songs.length > 0 && (
               <section className="mc3-quick" aria-label="Acesso rápido às suas músicas">
