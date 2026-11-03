@@ -1,12 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
-import { parseBlob } from 'music-metadata'
-import { 
-  Home, Library, ListMusic, Upload, Search, Play, Pause, 
-  SkipBack, SkipForward, Volume2, Music2, Plus, Trash2, 
-  Disc3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, Cloud, CloudUpload, CloudDownload, HardDriveDownload, ShieldCheck, 
-  RefreshCw, X, CheckCircle2, AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown, Maximize2 
-} from 'lucide-react'
+import {\n  useEffect, useRef, Library, ListMusic, Upload, Search, Play, Pause, Music2, Plus, Trash2, UsersRound, ImagePlus, Pencil, Cloud, CloudUpload, CloudDownload, HardDriveDownload, ShieldCheck, RefreshCw, X, CheckCircle2, AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown\n} from 'lucide-react'
 import './App.css'
 import './redesign.css'
 import './theme2.css'
@@ -15,6 +7,9 @@ import './musiccontrol30.css'
 import './musiccontrol33.css'
 import CinematicScene from './components/CinematicScene'
 import CardFanCarousel from './components/ui/card-fan-carousel'
+import Sidebar from './components/Sidebar'
+import Player from './components/Player'
+import './musiccontrol36.css'
 import './musiccontrol35.css'
 import { useMusicControlAuth } from './AuthContext'
 import { listCloudSongs, listCloudPlaylists, uploadSong, uploadPlaylists, downloadCloudSong } from './cloudSync'
@@ -905,25 +900,7 @@ export default function App() {
 
   return (
     <div className={`shell ${songsById ? "has-player" : "no-player"}`}>
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-icon"><Music2 size={20}/></div>
-          <span>Music<span className="brand-accent">Control</span></span>
-        </div>
-
-        <div className="nav-label">COLEÇÃO</div>
-        <nav className="navigation">
-          <button className={tab === 'home' ? 'nav-active' : ''} onClick={() => setTab('home')}><Home size={18}/> <span>Início</span></button>
-          <button className={tab === 'library' ? 'nav-active' : ''} onClick={() => setTab('library')}><Library size={18}/> <span>Biblioteca</span></button>
-          <button className={tab === 'playlists' ? 'nav-active' : ''} onClick={() => setTab('playlists')}><ListMusic size={18}/> <span>Playlists</span></button>
-          <button className={tab === 'artists' ? 'nav-active' : ''} onClick={() => setTab('artists')}><UsersRound size={18}/> <span>Artistas</span></button>
-          <button className={tab === 'cloud' ? 'nav-active' : ''} onClick={() => setTab('cloud')}><Cloud size={18}/> <span>Nuvem</span></button>
-        </nav>
-
-        <div className="sidebar-bottom">
-          <Disc3 size={16}/> MUSICCONTROL <span>3.4</span>
-        </div>
-      </aside>
+      <Sidebar tab={tab} onNavigate={setTab} />
 
       <main className="content">
         <div className="topbar">
@@ -1234,50 +1211,32 @@ export default function App() {
         )}
       </main>
 
-      {/* Docked Control Deck */}
+      {/* Modular player: one HTMLAudioElement in App remains the playback source of truth. */}
       {songsById && (
-        <footer className="player">
-          <div className="now-playing">
-            <button className="now-cover mc-cover-trigger" title="Ampliar capa" aria-label="Ver capa ampliada" onClick={() => setCoverOpen(true)}>{cover(songsById)}<Maximize2 size={12} className="mc-cover-expand"/></button>
-            <div className="now-text">
-              <strong>{songsById.title}</strong>
-              <small>{songsById.artist}</small>
-            </div>
-          </div>
-
-          <div className="player-center">
-            <div className="player-buttons">
-              <button className={`icon-btn optional ${shuffle ? 'toggled' : ''}`} onClick={() => setShuffle(s => !s)} title="Ordem aleatória">
-                <Shuffle size={16}/>
-              </button>
-              <button className="icon-btn" onClick={() => move(-1)} disabled={!songs.length} aria-label="Faixa anterior">
-                <SkipBack size={18}/>
-              </button>
-              <button className="play-main" onClick={() => setPlaying(p => !p)} disabled={!currentId} aria-label={playing ? 'Pausar' : 'Reproduzir'}>
-                {playing ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}
-              </button>
-              <button className="icon-btn" onClick={() => move(1)} disabled={!songs.length} aria-label="Próxima faixa">
-                <SkipForward size={18}/>
-              </button>
-              <button className={`icon-btn optional ${repeat ? 'toggled' : ''}`} onClick={() => setRepeat(s => !s)} title="Repetir">
-                <Repeat2 size={16}/>
-              </button>
-            </div>
-            <div className="seek">
-              <span>{time(progress)}</span>
-              <input type="range" min={0} max={duration || 1} step={0.1} value={Math.min(progress, duration || 1)} onChange={e => { const t = Number(e.target.value); if (audio.current) audio.current.currentTime = t; setProgress(t) }}/>
-              <span>{time(duration)}</span>
-            </div>
-          </div>
-
-          <button className="icon-btn mc-queue-toggle" title="Abrir fila" aria-label="Abrir fila de reprodução" onClick={() => setQueueOpen(true)}>
-            <ListOrdered size={20}/><span>{queue.length}</span>
-          </button>
-          <div className="volume">
-            <Volume2 size={17}/>
-            <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} onChange={e => setVolume(Number(e.target.value))}/>
-          </div>
-        </footer>
+        <Player
+          title={songsById.title}
+          artist={songsById.artist}
+          coverUrl={songsById.coverUrl}
+          playing={playing}
+          shuffle={shuffle}
+          repeat={repeat}
+          progress={progress}
+          duration={duration}
+          volume={volume}
+          queueLength={queue.length}
+          onTogglePlay={() => setPlaying(value => !value)}
+          onPrevious={() => move(-1)}
+          onNext={() => move(1)}
+          onToggleShuffle={() => setShuffle(value => !value)}
+          onToggleRepeat={() => setRepeat(value => !value)}
+          onSeek={seconds => {
+            if (audio.current) audio.current.currentTime = seconds
+            setProgress(seconds)
+          }}
+          onVolumeChange={setVolume}
+          onOpenQueue={() => setQueueOpen(true)}
+          onOpenCover={() => setCoverOpen(true)}
+        />
       )}
 
       {queueOpen && <div className="mc-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setQueueOpen(false) }}>
