@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { Eye, EyeOff, LockKeyhole, LogOut, UserPlus, Music2, X, ArrowRight, Headphones, ShieldCheck, ListMusic, AudioLines } from 'lucide-react'
 import { supabase } from './supabase'
+import { AuthContext } from './AuthContext'
 import AccountProfile from './components/AccountProfile'
 import './AuthGate.css'
 
@@ -22,37 +23,17 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
-  // Não desmontar o player durante TOKEN_REFRESHED, USER_UPDATED ou
-  // revalidações da sessão. Só limpar a interface no logout real.
   useEffect(() => {
     let active = true
     let revision = 0
-    let currentUserId: string | null = null
-
     async function loadSession(next: Session | null) {
       const current = ++revision
       if (!active) return
-      if (!next) {
-        currentUserId = null
-        setSession(null)
-        setRole(null)
-        setLoading(false)
-        setMessage('')
-        return
-      }
-
-      // Mesmo usuário: atualizar apenas o token, mantendo o App montado.
-      // O áudio não deve ser reiniciado por refresh automático do Supabase.
-      if (currentUserId === next.user.id) {
-        setSession(next)
-        return
-      }
-
-      currentUserId = next.user.id
       setSession(next)
       setRole(null)
       setLoading(true)
       setMessage('')
+      if (!next) { setLoading(false); return }
       const { data, error } = await supabase.from('profiles').select('role').eq('id', next.user.id).single()
       if (!active || current !== revision) return
       if (error || (data?.role !== 'admin' && data?.role !== 'user')) {
@@ -62,9 +43,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       }
       setLoading(false)
     }
-
     const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      // Consultas ao banco devem ocorrer fora do callback do Supabase.
+      // Deferir consulta ao banco para fora do callback de autenticação.
       setTimeout(() => { if (active) void loadSession(next) }, 0)
     })
     void supabase.auth.getSession().then(({ data, error }) => {
@@ -140,7 +120,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   )
 
   return <>
-    {children}
+    <AuthContext.Provider key={session.user.id} value={{ session, role }}>
+      {children}
+    </AuthContext.Provider>
     <AccountProfile session={session} role={role} onAdmin={() => { setMessage(''); setShowAdmin(true) }} />
     {showAdmin && role === 'admin' && <div className="mc-admin-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setShowAdmin(false) }}>
       <form className="mc-auth-card mc-admin-modal" onSubmit={createUser}>

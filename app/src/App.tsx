@@ -4,7 +4,7 @@ import { parseBlob } from 'music-metadata'
 import { 
   Home, Library, ListMusic, Upload, Search, Play, Pause, 
   SkipBack, SkipForward, Volume2, Music2, Plus, Trash2, 
-  Disc3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, 
+  Disc3, Shuffle, Repeat2, UsersRound, ImagePlus, Pencil, Cloud, CloudUpload, CloudDownload, HardDriveDownload, ShieldCheck, 
   RefreshCw, X, CheckCircle2, AlertCircle, Images, ListOrdered, ChevronUp, ChevronDown, Maximize2 
 } from 'lucide-react'
 import './App.css'
@@ -14,11 +14,14 @@ import './editorial21.css'
 import './musiccontrol30.css'
 import './musiccontrol33.css'
 import CinematicScene from './components/CinematicScene'
-import { testarSupabase } from './testeSupabase'
+import { useMusicControlAuth } from './AuthContext'
+import { listCloudSongs, listCloudPlaylists, uploadSong, uploadPlaylists, downloadCloudSong } from './cloudSync'
+import type { CloudSong, CloudPlaylist } from './cloudSync'
+import './cloudLibrary.css'
 
 type Song = { id: string; title: string; artist: string; album?: string; url: string; coverUrl?: string }
 type Playlist = { id: string; name: string; songIds: string[] }
-type Tab = 'home' | 'library' | 'playlists' | 'artists'
+type Tab = 'home' | 'library' | 'playlists' | 'artists' | 'cloud'
 type Dialog =
   | { kind: 'createPlaylist'; songId?: string }
   | { kind: 'choosePlaylist'; songId: string }
@@ -31,6 +34,13 @@ type Notice = { text: string; error?: boolean }
 type StoredSong = { id: string; title: string; artist: string; album?: string; cover?: Blob; file: Blob; importedAt: number }
 const DB_NAME = 'musiccontrol-library'
 const DB_VERSION = 1
+let activeLibraryOwner = ''
+function setLibraryOwner(userId: string) {
+  if (activeLibraryOwner !== userId) {
+    activeLibraryOwner = userId
+    if (dbPromise) { void dbPromise.then(db => db.close()).catch(() => {}); dbPromise = null }
+  }
+}
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -40,7 +50,8 @@ function openDatabase(): Promise<IDBDatabase> {
         reject(new Error('Este navegador não oferece suporte a IndexedDB.'))
         return
       }
-      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      if (!activeLibraryOwner) { reject(new Error('Conta não identificada.')); return }
+      const request = indexedDB.open(`${DB_NAME}:${activeLibraryOwner}`, DB_VERSION)
       request.onupgradeneeded = () => {
         const db = request.result
         if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath: 'id' })
@@ -108,9 +119,9 @@ function persistPlaylists(playlists: Playlist[]): Promise<void> {
 
 type PlaybackSnapshot = { songId: string | null; position: number; volume: number; wasPlaying: boolean }
 const PLAYBACK_KEY = 'musiccontrol:playback:v1'
-function loadPlayback(): PlaybackSnapshot | null {
+function loadPlayback(userId: string): PlaybackSnapshot | null {
   try {
-    const raw = sessionStorage.getItem(PLAYBACK_KEY)
+    const raw = sessionStorage.getItem(`${PLAYBACK_KEY}:${userId}`)
     if (!raw) return null
     const data = JSON.parse(raw) as Partial<PlaybackSnapshot>
     return {
@@ -126,6 +137,8 @@ const artistKey = (name: string) => name.trim().toLocaleLowerCase('pt-BR')
 const time = (value: number) => Number.isFinite(value) ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}` : '0:00'
 
 export default function App() {
+  const { session } = useMusicControlAuth()
+  const userId = session.user.id
   const [tab, setTab] = useState<Tab>('home')
   const [songs, setSongs] = useState<Song[]>([])
   const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -134,17 +147,17 @@ export default function App() {
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [queue, setQueue] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('musiccontrol:queue') || '[]') as string[] } catch { return [] }
+    try { return JSON.parse(localStorage.getItem(`musiccontrol:queue:${userId}`) || '[]') as string[] } catch { return [] }
   })
   const [queueOpen, setQueueOpen] = useState(false)
   const [coverOpen, setCoverOpen] = useState(false)
   const queueRef = useRef<string[]>(queue)
   queueRef.current = queue
-  useEffect(() => { localStorage.setItem('musiccontrol:queue', JSON.stringify(queue)) }, [queue])
+  useEffect(() => { localStorage.setItem(`musiccontrol:queue:${userId}`, JSON.stringify(queue)) }, [queue, userId])
 
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [volume, setVolume] = useState(() => loadPlayback()?.volume ?? 0.8)
+  const [volume, setVolume] = useState(() => loadPlayback(userId)?.volume ?? 0.8)
   const [shuffle, setShuffle] = useState(false)
   const [repeat, setRepeat] = useState(false)
   const [ready, setReady] = useState(false)
@@ -155,6 +168,13 @@ export default function App() {
   const photosRef = useRef<Record<string, string>>({})
   const artistPhotoInput = useRef<HTMLInputElement>(null)
   const [storageError, setStorageError] = useState('')
+  const [cloudSongs, setCloudSongs] = useState<CloudSong[]>([])
+  const [cloudPlaylists, setCloudPlaylists] = useState<CloudPlaylist[]>([])
+  const [cloudBusy, setCloudBusy] = useState(false)
+  const [cloudLoading, setCloudLoading] = useState(false)
+  const [cloudStatus, setCloudStatus] = useState('')
+  const [cloudError, setCloudError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [draftPlaylist, setDraftPlaylist] = useState('')
   const [draftTitle, setDraftTitle] = useState('')
@@ -168,7 +188,7 @@ export default function App() {
   const dialogInput = useRef<HTMLInputElement>(null)
 
   const audio = useRef<HTMLAudioElement>(null)
-  const playbackRestore = useRef(loadPlayback())
+  const playbackRestore = useRef(loadPlayback(userId))
   const pendingSeek = useRef<number | null>(playbackRestore.current?.position ?? null)
   const lastSnapshotWrite = useRef(0)
   const filesInput = useRef<HTMLInputElement>(null)
@@ -185,12 +205,8 @@ export default function App() {
     return acc
   }, {})).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 
-  // Teste de comunicação com o servidor Supabase
   useEffect(() => {
-    void testarSupabase()
-  }, [])
-
-  useEffect(() => {
+    setLibraryOwner(userId)
     let cancelled = false
     async function restoreLibrary() {
       let restored: Song[] = []
@@ -218,8 +234,14 @@ export default function App() {
             restoredPhotos[setting.key.slice('artist-photo:'.length)] = URL.createObjectURL(setting.value)
           }
         })
-        setArtistPhotos(restoredPhotos)
-        setSongs(restored)
+        setArtistPhotos(prev => {
+          for (const url of Object.values(prev)) URL.revokeObjectURL(url)
+          return restoredPhotos
+        })
+        setSongs(prev => {
+          for (const song of prev) { URL.revokeObjectURL(song.url); if (song.coverUrl) URL.revokeObjectURL(song.coverUrl) }
+          return restored
+        })
         setPlaylists(Array.isArray(savedPlaylists) ? savedPlaylists : [])
         const snapshot = playbackRestore.current
         if (snapshot?.songId && restored.some(s => s.id === snapshot.songId)) {
@@ -243,7 +265,7 @@ export default function App() {
     }
     void restoreLibrary()
     return () => { cancelled = true }
-  }, [])
+  }, [userId, reloadKey])
 
   useEffect(() => {
     if (!ready || storageError) return
@@ -360,7 +382,7 @@ export default function App() {
     lastSnapshotWrite.current = now
     const state = playbackStateRef.current
     try {
-      sessionStorage.setItem(PLAYBACK_KEY, JSON.stringify({
+      sessionStorage.setItem(`${PLAYBACK_KEY}:${userId}`, JSON.stringify({
         songId: state.currentId,
         position: audio.current?.currentTime ?? 0,
         volume: state.volume,
@@ -612,6 +634,138 @@ export default function App() {
     }
   }
 
+  async function refreshCloud(clearError = true) {
+    setCloudLoading(true)
+    if (clearError) setCloudError('')
+    try {
+      const [remoteSongs, remotePlaylists] = await Promise.all([
+        listCloudSongs(userId), listCloudPlaylists(userId)
+      ])
+      setCloudSongs(remoteSongs)
+      setCloudPlaylists(remotePlaylists)
+    } catch (error) {
+      setCloudError(error instanceof Error ? error.message : 'Não foi possível acessar a nuvem.')
+    } finally {
+      setCloudLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (tab === 'cloud') void refreshCloud()
+  // A consulta é realizada ao entrar na aba Nuvem.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, userId])
+
+  async function sendToCloud() {
+    if (cloudBusy || !ready || storageError) return
+    setCloudBusy(true)
+    setCloudError('')
+    let uploaded = 0
+    try {
+      const local = await getRecords<StoredSong>('songs')
+      for (const [i, song] of local.entries()) {
+        setCloudStatus(`Enviando música ${i + 1} de ${local.length}: ${song.title}`)
+        await uploadSong(userId, song)
+        uploaded++
+      }
+      setCloudStatus('Sincronizando playlists...')
+      await uploadPlaylists(userId, playlists)
+      setCloudStatus(`${uploaded} música(s) e ${playlists.length} playlist(s) enviadas. Seus arquivos locais foram preservados.`)
+      await refreshCloud()
+    } catch (error) {
+      await refreshCloud(false)
+      setCloudError(`${uploaded} faixa(s) enviada(s) antes da interrupção. ${error instanceof Error ? error.message : 'Erro inesperado.'}`)
+    } finally { setCloudBusy(false) }
+  }
+
+  async function restoreFromCloud() {
+    if (cloudBusy || !ready || storageError) return
+    setCloudBusy(true)
+    setCloudError('')
+    let restored = 0
+    try {
+      const remote = await listCloudSongs(userId)
+      const local = await getRecords<StoredSong>('songs')
+      const known = new Set(local.map(s => s.id))
+      const missing = remote.filter(song => !known.has(song.id))
+      for (const [i, song] of missing.entries()) {
+        setCloudStatus(`Baixando música ${i + 1} de ${missing.length}: ${song.title}`)
+        const blobs = await downloadCloudSong(song)
+        await putRecord('songs', {
+          id: song.id, title: song.title, artist: song.artist,
+          album: song.album || undefined, file: blobs.file, cover: blobs.cover,
+          importedAt: Date.parse(song.imported_at) || Date.now()
+        } satisfies StoredSong)
+        restored++
+      }
+      const remotePlaylists = await listCloudPlaylists(userId)
+      const localPlaylists = new Map(playlists.map(p => [p.id, p]))
+      for (const p of remotePlaylists) if (!localPlaylists.has(p.id)) {
+        localPlaylists.set(p.id, { id: p.id, name: p.name, songIds: p.song_ids })
+      }
+      await persistPlaylists(Array.from(localPlaylists.values()))
+      setPlaylists(Array.from(localPlaylists.values()))
+      if (restored) setReloadKey(v => v + 1)
+      setCloudStatus(`${restored} música(s) nova(s) restaurada(s). ${remote.length - restored} já existiam neste navegador. Playlists locais preservadas.`)
+      await refreshCloud()
+    } catch (error) {
+      if (restored) setReloadKey(v => v + 1)
+      setCloudError(`${restored} música(s) restaurada(s) antes do erro. ${error instanceof Error ? error.message : 'Falha ao restaurar.'}`)
+    } finally { setCloudBusy(false) }
+  }
+
+  async function migrateLegacyLibrary() {
+    if (cloudBusy || !ready || storageError) return
+    setCloudBusy(true)
+    setCloudError('')
+    try {
+      // Migração opt-in para não expor a antiga biblioteca compartilhada entre contas.
+      const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error ?? new Error('Não foi possível abrir a biblioteca antiga.'))
+      })
+      const loadLegacy = <T,>(store: string) => new Promise<T[]>((resolve, reject) => {
+        if (!legacy.objectStoreNames.contains(store)) { resolve([]); return }
+        const request = legacy.transaction(store, 'readonly').objectStore(store).getAll()
+        request.onsuccess = () => resolve(request.result as T[])
+        request.onerror = () => reject(request.error ?? new Error('Falha ao importar os dados antigos.'))
+      })
+      const oldSongs = await loadLegacy<StoredSong>('songs')
+      const settings = await loadLegacy<{ key: string; value: unknown }>('settings')
+      legacy.close()
+      if (!oldSongs.length && !settings.length) {
+        setCloudStatus('Nenhuma biblioteca antiga foi encontrada neste navegador.')
+        return
+      }
+      const currentSongs = await getRecords<StoredSong>('songs')
+      const known = new Set(currentSongs.map(song => song.id))
+      let count = 0
+      for (const song of oldSongs) if (!known.has(song.id)) {
+        await putRecord('songs', song)
+        count++
+      }
+      for (const entry of settings) {
+        if (entry.key === 'playlists') continue
+        if (entry.key.startsWith('artist-photo:')) {
+          const stored = await getRecord('settings', entry.key)
+          if (!stored) await putRecord('settings', entry)
+        }
+      }
+      const formerPlaylists = settings.find(s => s.key === 'playlists')?.value
+      if (Array.isArray(formerPlaylists)) {
+        const combined = new Map(playlists.map(p => [p.id, p]))
+        for (const p of formerPlaylists as Playlist[]) if (!combined.has(p.id)) combined.set(p.id, p)
+        await persistPlaylists(Array.from(combined.values()))
+        setPlaylists(Array.from(combined.values()))
+      }
+      setReloadKey(v => v + 1)
+      setCloudStatus(`${count} faixa(s) importada(s) da biblioteca antiga. Agora estão isoladas nesta conta.`)
+    } catch (error) {
+      setCloudError(error instanceof Error ? error.message : 'Falha ao importar biblioteca antiga.')
+    } finally { setCloudBusy(false) }
+  }
+
   function cover(song: Song) {
     return song.coverUrl
       ? <img className="cover-photo" src={song.coverUrl} alt={song.title} />
@@ -760,10 +914,11 @@ export default function App() {
           <button className={tab === 'library' ? 'nav-active' : ''} onClick={() => setTab('library')}><Library size={18}/> <span>Biblioteca</span></button>
           <button className={tab === 'playlists' ? 'nav-active' : ''} onClick={() => setTab('playlists')}><ListMusic size={18}/> <span>Playlists</span></button>
           <button className={tab === 'artists' ? 'nav-active' : ''} onClick={() => setTab('artists')}><UsersRound size={18}/> <span>Artistas</span></button>
+          <button className={tab === 'cloud' ? 'nav-active' : ''} onClick={() => setTab('cloud')}><Cloud size={18}/> <span>Nuvem</span></button>
         </nav>
 
         <div className="sidebar-bottom">
-          <Disc3 size={16}/> MUSICCONTROL <span>3.0</span>
+          <Disc3 size={16}/> MUSICCONTROL <span>3.4</span>
         </div>
       </aside>
 
@@ -771,19 +926,56 @@ export default function App() {
         <div className="topbar">
           <span className="topbar-location">
             Coleção <span className="topbar-separator">/</span> 
-            {tab === "home" ? "Início" : tab === "library" ? "Biblioteca" : tab === "artists" ? "Artistas" : "Playlists"}
+            {tab === "home" ? "Início" : tab === "library" ? "Biblioteca" : tab === "artists" ? "Artistas" : tab === "cloud" ? "Nuvem" : "Playlists"}
           </span>
           <div id="mc-profile-slot" />
         </div>
 
         {storageError && <p className="muted" role="alert">{storageError}</p>}
 
+        {tab === 'cloud' && (
+          <section className="mc-cloud" aria-labelledby="mc-cloud-title">
+            <div className="mc-cloud-heading">
+              <div className="mc-cloud-icon"><Cloud size={28}/></div>
+              <span className="mc-cloud-eyebrow">SUA MÚSICA, ONDE VOCÊ ESTIVER</span>
+              <h1 id="mc-cloud-title">Sua biblioteca <em>na nuvem.</em></h1>
+              <p>Sincronize suas faixas e playlists com segurança para recuperar tudo em outro dispositivo. O conteúdo permanece privado na sua conta.</p>
+            </div>
+            <div className="mc-cloud-metrics" aria-live="polite">
+              <div><span>Biblioteca deste navegador</span><strong>{songs.length}</strong><small>faixas disponíveis offline</small></div>
+              <div><span>Acervo na nuvem</span><strong>{cloudLoading ? '…' : cloudSongs.length}</strong><small>faixas salvas no Supabase</small></div>
+              <div><span>Playlists na nuvem</span><strong>{cloudLoading ? '…' : cloudPlaylists.length}</strong><small>listas já sincronizadas</small></div>
+            </div>
+            <div className="mc-cloud-actions">
+              <div className="mc-cloud-action">
+                <div className="mc-cloud-action-icon"><CloudUpload size={22}/></div>
+                <div><h2>Enviar biblioteca</h2><p>Faz uma cópia das músicas e playlists deste navegador no seu espaço privado do Supabase.</p></div>
+                <button className="primary" disabled={cloudBusy || cloudLoading || !ready || !!storageError} onClick={() => void sendToCloud()}><CloudUpload size={17}/> {cloudBusy ? 'Sincronizando…' : 'Enviar para a nuvem'}</button>
+              </div>
+              <div className="mc-cloud-action">
+                <div className="mc-cloud-action-icon"><CloudDownload size={22}/></div>
+                <div><h2>Restaurar em outro dispositivo</h2><p>Baixa somente as faixas que ainda não estão neste navegador e recupera playlists ausentes.</p></div>
+                <button className="secondary" disabled={cloudBusy || cloudLoading || !ready || !!storageError} onClick={() => void restoreFromCloud()}><CloudDownload size={17}/> Restaurar da nuvem</button>
+              </div>
+              <div className="mc-cloud-action mc-cloud-legacy">
+                <div className="mc-cloud-action-icon"><HardDriveDownload size={22}/></div>
+                <div><h2>Biblioteca da versão anterior</h2><p>Importe, se necessário, os arquivos que estavam salvos no navegador antes da separação das bibliotecas por conta. Faça isso apenas na sua conta.</p></div>
+                <button className="secondary" disabled={cloudBusy || !ready || !!storageError} onClick={() => void migrateLegacyLibrary()}><HardDriveDownload size={17}/> Importar biblioteca antiga</button>
+              </div>
+            </div>
+            {cloudStatus && <p role="status" className="mc-cloud-status"><CheckCircle2 size={18}/>{cloudStatus}</p>}
+            {cloudError && <p role="alert" className="mc-cloud-error"><AlertCircle size={18}/>{cloudError}</p>}
+            <div className="mc-cloud-footnote"><ShieldCheck size={18}/><span>Os downloads não substituem arquivos existentes, e o envio nunca apaga sua biblioteca local. Exclusões locais não removem arquivos da nuvem.</span></div>
+            <button className="text-button" disabled={cloudLoading || cloudBusy} onClick={() => void refreshCloud()}><RefreshCw size={15}/> Atualizar informações da nuvem</button>
+          </section>
+        )}
+
         {tab === 'home' && (
           <>
             <section className="hero mc2-hero">
               <CinematicScene />
               <div className="hero-copy">
-                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 3.0</span>
+                <span className="hero-caption">MUSICCONTROL / EDIÇÃO 3.4</span>
                 <h1>O SOM NO<br/><em>SEU RITMO.</em></h1>
                 <p>Reproduza álbuns e faixas sem intermediários, diretamente do armazenamento protegido do seu navegador.</p>
                 <div className="hero-actions">

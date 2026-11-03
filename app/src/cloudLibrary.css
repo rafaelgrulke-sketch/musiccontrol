@@ -1,0 +1,30 @@
+/* MusicControl 3.4: a nuvem mantém a identidade neon rosa, sem criar um segundo tema. */
+.mc-cloud{width:min(1160px,100%);margin:0 auto;padding:28px 0 90px;color:var(--text-primary,#f7eef6)}
+.mc-cloud-heading{max-width:740px;padding:34px 0 44px}
+.mc-cloud-icon{width:60px;height:60px;display:grid;place-items:center;border:1px solid #ff66ad66;border-radius:16px;color:#ff76b6;background:linear-gradient(140deg,#ff559a1b,#fb56b30c);margin-bottom:25px}
+.mc-cloud-eyebrow{color:#f788bf;font-size:11px;font-weight:800;letter-spacing:2.6px}
+.mc-cloud-heading h1{font-size:clamp(2.2rem,4.4vw,4.5rem);line-height:1.07;letter-spacing:-.055em;margin:18px 0 18px;color:#fff;font-weight:850}
+.mc-cloud-heading em{color:#ff79b8;font-style:normal}
+.mc-cloud-heading>p{color:#c8bccc;line-height:1.75;font-size:15px;max-width:610px}
+.mc-cloud-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid #ffffff22;border-bottom:1px solid #ffffff22;margin-bottom:36px}
+.mc-cloud-metrics>div{display:flex;flex-direction:column;gap:8px;padding:28px 26px 28px 0}
+.mc-cloud-metrics>div+div{border-left:1px solid #ffffff20;padding-left:26px}
+.mc-cloud-metrics span{color:#d1c1d0;font-size:12px}
+.mc-cloud-metrics strong{font-size:clamp(32px,4vw,48px);letter-spacing:-.05em;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+.mc-cloud-metrics small{font-size:12px;color:#8f8294}
+.mc-cloud-actions{display:flex;flex-direction:column;gap:12px}
+.mc-cloud-action{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:20px;align-items:center;padding:26px 24px;border:1px solid #ffffff20;border-radius:16px;background:#271c2cbb}
+.mc-cloud-action-icon{width:50px;height:50px;background:#ff66a51a;color:#ff8cbd;display:grid;place-items:center;border-radius:12px}
+.mc-cloud-action h2{margin:0 0 6px;font-size:17px;letter-spacing:-.02em;color:white}
+.mc-cloud-action p{margin:0;color:#b7aabb;font-size:13px;line-height:1.6;max-width:470px}
+.mc-cloud-action button{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.mc-cloud-legacy{background:transparent;border-style:dashed;border-color:#ffffff24}
+.mc-cloud-footnote{display:flex;align-items:flex-start;gap:10px;color:#aba0af;font-size:12px;line-height:1.6;margin:26px 0 16px;max-width:720px}
+.mc-cloud-footnote svg{flex-shrink:0;color:#ff9bc8}
+.mc-cloud-status,.mc-cloud-error{display:flex;align-items:flex-start;gap:10px;padding:13px 16px;border-radius:10px;margin:18px 0;font-size:13px;line-height:1.6;word-break:break-word}
+.mc-cloud-status{color:#ffcce2;background:#ff5fac15;border:1px solid #ff6dad35}
+.mc-cloud-error{color:#ffd2d2;background:#ff44441a;border:1px solid #f66a6a5e}
+.mc-cloud-status svg,.mc-cloud-error svg{flex-shrink:0;margin-top:2px}
+@media(max-width:900px){.mc-cloud-action{grid-template-columns:50px 1fr}.mc-cloud-action button{grid-column:1/-1;justify-self:start}}
+@media(max-width:600px){.mc-cloud{padding:12px 0 70px}.mc-cloud-heading{padding:20px 0 26px}.mc-cloud-metrics{grid-template-columns:1fr}.mc-cloud-metrics>div,.mc-cloud-metrics>div+div{border-left:0;padding:14px 0;border-bottom:1px solid #ffffff14}.mc-cloud-metrics>div:last-child{border-bottom:0}.mc-cloud-action{padding:17px;gap:12px;grid-template-columns:38px 1fr}.mc-cloud-action-icon{width:38px;height:38px}.mc-cloud-action button{width:100%}}
+@media(prefers-reduced-motion:reduce){.mc-cloud *{scroll-behavior:auto!important;transition:none!important}}
